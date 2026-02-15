@@ -13,7 +13,8 @@
   "dependencies": {
     "@collaborative-component-customizer/engine": "0.0.0",
     "@collaborative-component-customizer/shared": "0.0.0",
-    "preact": "^10.25.4"
+    "preact": "^10.25.4",
+    "preact-render-to-string": "^6.6.0"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.1",

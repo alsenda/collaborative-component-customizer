@@ -3,13 +3,15 @@ import { render } from "preact-render-to-string";
 import { App } from "./app";
 
 describe("App progress dashboard", () => {
-  test("displays STEP_10 progress and keeps STEP_02 output", () => {
+  test("displays migration and room API sections and keeps engine output", () => {
     const html = render(<App />);
 
     expect(html).toContain("Progress Dashboard");
-    expect(html).toContain("STEP_10 SQLite schema + migrations");
+    expect(html).toContain("SQLite migration status");
     expect(html).toContain("Backend proof: loading...");
-    expect(html).toContain("STEP_02 Engine domain model + tests");
+    expect(html).toContain("Room document API");
+    expect(html).toContain("Current doc fetch: loading...");
+    expect(html).toContain("Engine patch demo");
     expect(html).toContain("Status: success");
   });
 });

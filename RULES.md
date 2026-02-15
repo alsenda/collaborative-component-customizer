@@ -196,4 +196,4 @@ If any condition fails, the AI MUST stop and report.
 During execution:
 
 - set step status to **in progress** at start
-- set to **done** only when fully complete
+- never set step status to **done** unless the user explicitly asks to check and update it to done

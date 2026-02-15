@@ -1,5 +1,10 @@
 import type { JSX } from "preact";
 import {
+  applyPatchSequence,
+  type EngineDocument,
+  type EnginePatchOperation
+} from "@collaborative-component-customizer/engine";
+import {
   PROTOCOL_VERSION,
   type JoinMessage,
   type RoomId
@@ -17,9 +22,46 @@ export function App(): JSX.Element {
     clientId: "web-client"
   };
 
+  const sampleDocument: EngineDocument = {
+    atomicDoc: {
+      componentId: "component-header",
+      className: "text-sm"
+    },
+    pageDoc: {
+      pageId: "page-home",
+      overrides: []
+    }
+  };
+
+  const sampleOperations: EnginePatchOperation[] = [
+    {
+      op: "setAtomicClassName",
+      componentId: "component-header",
+      className: "text-lg font-semibold"
+    },
+    {
+      op: "setPageNodeClassName",
+      pageId: "page-home",
+      instanceId: "hero",
+      nodeId: "title",
+      className: "text-5xl"
+    }
+  ];
+
+  const sampleResult = applyPatchSequence(sampleDocument, sampleOperations);
+
   return (
     <main className="p-4">
-      collaborative-component-customizer web app scaffold is ready (protocol v{initialJoin.protocolVersion}, room {initialJoin.roomId}).
+      <p>
+        collaborative-component-customizer web app scaffold is ready (protocol v
+        {initialJoin.protocolVersion}, room {initialJoin.roomId}).
+      </p>
+
+      <section className="mt-4">
+        <h2>STEP_02 Debug</h2>
+        <p>Status: {sampleResult.ok ? "success" : "error"}</p>
+        <pre>{JSON.stringify(sampleResult, null, 2)}</pre>
+      </section>
     </main>
   );
 }

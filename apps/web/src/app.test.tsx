@@ -16,6 +16,8 @@ describe("App progress dashboard", () => {
     expect(html).toContain("WebTransport capability:");
     expect(html).toContain("Lock + presence debug");
     expect(html).toContain("Lock flow state: loading...");
+    expect(html).toContain("Versioning save + reapply debug");
+    expect(html).toContain("Versioning flow state: loading...");
     expect(html).toContain("Engine patch demo");
     expect(html).toContain("Status: success");
   });

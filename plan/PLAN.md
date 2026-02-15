@@ -278,7 +278,7 @@ The source of truth for implemented behavior is always the code + tests.
 - [x] STEP_11 HTTP API for current docs + version history
 - [x] STEP_12 Realtime server (WebTransport)
 - [x] STEP_13 Locks + presence
-- [ ] STEP_14 Versioning: save + reapply
+- [x] STEP_14 Versioning: save + reapply
 - [ ] STEP_15 Remove temporary demo seed bootstrap
 - [ ] STEP_20 UI shell + Tailwind
 - [ ] STEP_21 Component templates + renderer + node selection

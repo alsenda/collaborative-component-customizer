@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "dev": "concurrently -n api,web \"npm run dev:api\" \"npm run dev:web\"",
+    "dev": "node scripts/dev.mjs",
     "dev:web": "npm run dev --workspace @collaborative-component-customizer/web",
     "dev:api": "npm run dev --workspace @collaborative-component-customizer/api",
     "lint": "npm run lint --workspaces --if-present",

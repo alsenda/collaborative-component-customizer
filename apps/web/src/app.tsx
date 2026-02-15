@@ -50,6 +50,23 @@ interface LockPresenceDemoResponse {
   events: unknown[];
 }
 
+interface SaveVersionResponse {
+  roomId: string;
+  versionId: string;
+  parentVersionId: string | null;
+  createdAtIso: string;
+  currentVersionId: string;
+}
+
+interface ReapplyVersionResponse {
+  roomId: string;
+  versionId: string;
+  parentVersionId: string | null;
+  createdAtIso: string;
+  currentVersionId: string;
+  sourceVersionId: string;
+}
+
 /**
  * Renders the initial placeholder UI for the web application.
  */
@@ -74,6 +91,17 @@ export function App(): JSX.Element {
   const [step13DemoState, setStep13DemoState] = useState<
     | { status: "loading" }
     | { status: "success"; payload: LockPresenceDemoResponse }
+    | { status: "error"; message: string }
+  >({ status: "loading" });
+  const [versioningDemoState, setVersioningDemoState] = useState<
+    | { status: "loading" }
+    | {
+        status: "success";
+        payload: {
+          save: SaveVersionResponse;
+          reapply: ReapplyVersionResponse;
+        };
+      }
     | { status: "error"; message: string }
   >({ status: "loading" });
 
@@ -183,6 +211,75 @@ export function App(): JSX.Element {
       controller.abort();
     };
   }, [apiBaseUrl, sampleRoomId]);
+
+  useEffect(() => {
+    if (migrationProof.status !== "success") {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    void (async () => {
+      try {
+        const saveResponse = await fetch(`${apiBaseUrl}/rooms/${sampleRoomId}/save`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({}),
+          signal: controller.signal
+        });
+
+        if (!saveResponse.ok) {
+          setVersioningDemoState({
+            status: "error",
+            message: `save failed (${saveResponse.status})`
+          });
+          return;
+        }
+
+        const savePayload = (await saveResponse.json()) as SaveVersionResponse;
+
+        const reapplyResponse = await fetch(`${apiBaseUrl}/rooms/${sampleRoomId}/reapply`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({ versionId: "version-003" }),
+          signal: controller.signal
+        });
+
+        if (!reapplyResponse.ok) {
+          setVersioningDemoState({
+            status: "error",
+            message: `reapply failed (${reapplyResponse.status})`
+          });
+          return;
+        }
+
+        const reapplyPayload = (await reapplyResponse.json()) as ReapplyVersionResponse;
+
+        setVersioningDemoState({
+          status: "success",
+          payload: {
+            save: savePayload,
+            reapply: reapplyPayload
+          }
+        });
+      } catch {
+        if (!controller.signal.aborted) {
+          setVersioningDemoState({
+            status: "error",
+            message: "versioning demo request failed"
+          });
+        }
+      }
+    })();
+
+    return () => {
+      controller.abort();
+    };
+  }, [apiBaseUrl, sampleRoomId, migrationProof.status]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -373,6 +470,26 @@ export function App(): JSX.Element {
             <pre>{JSON.stringify(step13DemoState.payload.latestEvent, null, 2)}</pre>
             <p>Recent lock/presence messages:</p>
             <pre>{JSON.stringify(step13DemoState.payload.events, null, 2)}</pre>
+          </>
+        ) : null}
+      </section>
+
+      <section className="mt-4">
+        <h2>Versioning save + reapply debug</h2>
+
+        {versioningDemoState.status === "loading" ? <p>Versioning flow state: loading...</p> : null}
+
+        {versioningDemoState.status === "error" ? (
+          <p>Versioning flow state: error ({versioningDemoState.message})</p>
+        ) : null}
+
+        {versioningDemoState.status === "success" ? (
+          <>
+            <p>Versioning flow state: success</p>
+            <p>Save payload:</p>
+            <pre>{JSON.stringify(versioningDemoState.payload.save, null, 2)}</pre>
+            <p>Reapply payload:</p>
+            <pre>{JSON.stringify(versioningDemoState.payload.reapply, null, 2)}</pre>
           </>
         ) : null}
       </section>

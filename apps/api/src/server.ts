@@ -17,6 +17,11 @@ import {
   isValidRouteId,
   listRoomVersions
 } from "./db/roomReadRepository.js";
+import {
+  reapplyRoomVersionAsLatest,
+  saveCurrentRoomAsVersion,
+  type VersionMutationOptions
+} from "./db/roomWriteRepository.js";
 import { RealtimeDispatcher } from "./realtime/dispatcher.js";
 import { createWebTransportAdapter } from "./realtime/webTransportAdapter.js";
 
@@ -25,10 +30,18 @@ interface ApiErrorPayload {
   message: string;
 }
 
+interface BuildServerOptions {
+  versionMutation?: VersionMutationOptions;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 /**
  * Builds and configures the Fastify server instance.
  */
-export function buildServer(): FastifyInstance {
+export function buildServer(options: BuildServerOptions = {}): FastifyInstance {
   const server = Fastify({
     logger: false
   });
@@ -313,6 +326,20 @@ export function buildServer(): FastifyInstance {
     return reply.status(204).send();
   });
 
+  server.options("/rooms/:roomId/save", async (_request, reply) => {
+    reply.header("Access-Control-Allow-Origin", "*");
+    reply.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+    reply.header("Access-Control-Allow-Headers", "Content-Type");
+    return reply.status(204).send();
+  });
+
+  server.options("/rooms/:roomId/reapply", async (_request, reply) => {
+    reply.header("Access-Control-Allow-Origin", "*");
+    reply.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+    reply.header("Access-Control-Allow-Headers", "Content-Type");
+    return reply.status(204).send();
+  });
+
   server.get("/migration-proof", async (_request, reply) => {
     reply.header("Access-Control-Allow-Origin", "*");
 
@@ -471,6 +498,103 @@ export function buildServer(): FastifyInstance {
     }
   });
 
+  server.post("/rooms/:roomId/save", async (request, reply) => {
+    reply.header("Access-Control-Allow-Origin", "*");
+
+    const roomId = (request.params as { roomId?: unknown }).roomId;
+    if (!isValidRouteId(roomId)) {
+      const payload: ApiErrorPayload = {
+        error: "INVALID_REQUEST",
+        message: "Invalid roomId parameter."
+      };
+      return reply.status(400).send(payload);
+    }
+
+    if (request.body !== undefined && !isRecord(request.body)) {
+      const payload: ApiErrorPayload = {
+        error: "INVALID_REQUEST",
+        message: "Invalid request body."
+      };
+      return reply.status(400).send(payload);
+    }
+
+    const database = new Database(dbFilePath);
+    database.exec("PRAGMA foreign_keys = ON;");
+
+    try {
+      const savePayload = saveCurrentRoomAsVersion(database, roomId, options.versionMutation);
+      if (savePayload === null) {
+        const payload: ApiErrorPayload = {
+          error: "NOT_FOUND",
+          message: `Room '${roomId}' was not found.`
+        };
+        return reply.status(404).send(payload);
+      }
+
+      return reply.status(200).send(savePayload);
+    } catch {
+      const payload: ApiErrorPayload = {
+        error: "INVALID_REQUEST",
+        message: "Failed to save current room version."
+      };
+      return reply.status(500).send(payload);
+    } finally {
+      database.close();
+    }
+  });
+
+  server.post("/rooms/:roomId/reapply", async (request, reply) => {
+    reply.header("Access-Control-Allow-Origin", "*");
+
+    const roomId = (request.params as { roomId?: unknown }).roomId;
+    if (!isValidRouteId(roomId)) {
+      const payload: ApiErrorPayload = {
+        error: "INVALID_REQUEST",
+        message: "Invalid roomId parameter."
+      };
+      return reply.status(400).send(payload);
+    }
+
+    const body = request.body;
+    if (!isRecord(body) || !isValidRouteId(body.versionId)) {
+      const payload: ApiErrorPayload = {
+        error: "INVALID_REQUEST",
+        message: "Invalid versionId in request body."
+      };
+      return reply.status(400).send(payload);
+    }
+
+    const database = new Database(dbFilePath);
+    database.exec("PRAGMA foreign_keys = ON;");
+
+    try {
+      const reapplyPayload = reapplyRoomVersionAsLatest(
+        database,
+        roomId,
+        body.versionId,
+        options.versionMutation
+      );
+
+      if (reapplyPayload === null) {
+        const payload: ApiErrorPayload = {
+          error: "NOT_FOUND",
+          message: `Version '${body.versionId}' for room '${roomId}' was not found.`
+        };
+        return reply.status(404).send(payload);
+      }
+
+      return reply.status(200).send(reapplyPayload);
+    } catch {
+      const payload: ApiErrorPayload = {
+        error: "INVALID_REQUEST",
+        message: "Failed to reapply room version."
+      };
+      return reply.status(500).send(payload);
+    } finally {
+      database.close();
+    }
+  });
+
   return server;
 }
 
@@ -483,7 +607,12 @@ export async function startServer(port: number, host: string): Promise<void> {
   try {
     await server.listen({ port, host });
   } catch (error) {
-    server.log.error(error);
+    const startupError = error as { message?: string; code?: string };
+    const message = startupError.message ?? "Unknown startup error.";
+    const code = startupError.code ?? "UNKNOWN";
+    console.error(
+      `[api] Failed to start server on ${host}:${port} (${code}): ${message}`
+    );
     process.exitCode = 1;
   }
 }

@@ -115,6 +115,14 @@ async function setupDatabase(seedStep11Fixture: boolean): Promise<string> {
   return dbFilePath;
 }
 
+function createVersionIdFactory(prefix: string): (createdAtIso: string) => string {
+  let counter = 0;
+  return () => {
+    counter += 1;
+    return `${prefix}-${counter.toString().padStart(3, "0")}`;
+  };
+}
+
 afterEach(async () => {
   process.env.API_DB_PATH = initialApiDbPath;
   await Promise.all(
@@ -341,6 +349,243 @@ describe("room document and version routes", () => {
       expect(response.json()).toEqual({
         error: "NOT_FOUND",
         message: "Version 'missing-version' for room 'demo-room' was not found."
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("save creates a new immutable version and updates the current pointer", async () => {
+    process.env.API_DB_PATH = await setupDatabase(true);
+
+    const server = buildServer({
+      versionMutation: {
+        now: () => new Date("2026-02-15T10:00:00.000Z"),
+        createVersionId: createVersionIdFactory("version-save")
+      }
+    });
+
+    try {
+      const saveResponse = await server.inject({
+        method: "POST",
+        url: `/rooms/${fixtureRoomId}/save`,
+        payload: {}
+      });
+
+      expect(saveResponse.statusCode).toBe(200);
+      expect(saveResponse.json()).toEqual({
+        roomId: fixtureRoomId,
+        versionId: "version-save-001",
+        parentVersionId: fixtureCurrentVersionId,
+        createdAtIso: "2026-02-15T10:00:00.000Z",
+        currentVersionId: "version-save-001"
+      });
+
+      const currentResponse = await server.inject({
+        method: "GET",
+        url: `/rooms/${fixtureRoomId}/current`
+      });
+
+      expect(currentResponse.statusCode).toBe(200);
+      expect(currentResponse.json()).toMatchObject({
+        roomId: fixtureRoomId,
+        currentVersionId: "version-save-001"
+      });
+
+      const versionsResponse = await server.inject({
+        method: "GET",
+        url: `/rooms/${fixtureRoomId}/versions`
+      });
+
+      expect(versionsResponse.statusCode).toBe(200);
+      expect(versionsResponse.json()).toEqual({
+        roomId: fixtureRoomId,
+        versions: [
+          {
+            versionId: "version-save-001",
+            createdAtIso: "2026-02-15T10:00:00.000Z"
+          },
+          {
+            versionId: fixtureCurrentVersionId,
+            createdAtIso: "2026-02-15T00:02:00.000Z"
+          },
+          {
+            versionId: "version-002",
+            createdAtIso: "2026-02-15T00:02:00.000Z"
+          },
+          {
+            versionId: "version-001",
+            createdAtIso: "2026-02-15T00:01:00.000Z"
+          }
+        ]
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("reapply creates a new latest version from historical content without rewriting history", async () => {
+    process.env.API_DB_PATH = await setupDatabase(true);
+
+    const server = buildServer({
+      versionMutation: {
+        now: () => new Date("2026-02-15T11:00:00.000Z"),
+        createVersionId: createVersionIdFactory("version-reapply")
+      }
+    });
+
+    try {
+      const reapplyResponse = await server.inject({
+        method: "POST",
+        url: `/rooms/${fixtureRoomId}/reapply`,
+        payload: {
+          versionId: "version-001"
+        }
+      });
+
+      expect(reapplyResponse.statusCode).toBe(200);
+      expect(reapplyResponse.json()).toEqual({
+        roomId: fixtureRoomId,
+        versionId: "version-reapply-001",
+        parentVersionId: fixtureCurrentVersionId,
+        createdAtIso: "2026-02-15T11:00:00.000Z",
+        currentVersionId: "version-reapply-001",
+        sourceVersionId: "version-001"
+      });
+
+      const currentResponse = await server.inject({
+        method: "GET",
+        url: `/rooms/${fixtureRoomId}/current`
+      });
+
+      expect(currentResponse.statusCode).toBe(200);
+      expect(currentResponse.json()).toEqual({
+        roomId: fixtureRoomId,
+        currentVersionId: "version-reapply-001",
+        atomicDoc: {
+          componentId: "component-hero",
+          className: "text-xl"
+        },
+        pageDoc: {
+          pageId: "page-home",
+          overrides: []
+        }
+      });
+
+      const versionsResponse = await server.inject({
+        method: "GET",
+        url: `/rooms/${fixtureRoomId}/versions`
+      });
+
+      const versionsPayload = versionsResponse.json() as {
+        roomId: string;
+        versions: Array<{ versionId: string; createdAtIso: string }>;
+      };
+
+      expect(versionsResponse.statusCode).toBe(200);
+      expect(versionsPayload.roomId).toBe(fixtureRoomId);
+      expect(versionsPayload.versions).toHaveLength(4);
+      expect(versionsPayload.versions[0]).toEqual({
+        versionId: "version-reapply-001",
+        createdAtIso: "2026-02-15T11:00:00.000Z"
+      });
+      expect(versionsPayload.versions.map((entry) => entry.versionId)).toEqual([
+        "version-reapply-001",
+        fixtureCurrentVersionId,
+        "version-002",
+        "version-001"
+      ]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("returns 404 when saving a missing room", async () => {
+    process.env.API_DB_PATH = await setupDatabase(false);
+
+    const server = buildServer();
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/rooms/missing-room/save",
+        payload: {}
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toEqual({
+        error: "NOT_FOUND",
+        message: "Room 'missing-room' was not found."
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("returns 404 when reapplying a missing version", async () => {
+    process.env.API_DB_PATH = await setupDatabase(true);
+
+    const server = buildServer();
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: `/rooms/${fixtureRoomId}/reapply`,
+        payload: {
+          versionId: "missing-version"
+        }
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toEqual({
+        error: "NOT_FOUND",
+        message: "Version 'missing-version' for room 'demo-room' was not found."
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("returns 400 for invalid save route params", async () => {
+    process.env.API_DB_PATH = await setupDatabase(true);
+
+    const server = buildServer();
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/rooms/%20/save",
+        payload: {}
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({
+        error: "INVALID_REQUEST",
+        message: "Invalid roomId parameter."
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("returns 400 for invalid reapply body", async () => {
+    process.env.API_DB_PATH = await setupDatabase(true);
+
+    const server = buildServer();
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: `/rooms/${fixtureRoomId}/reapply`,
+        payload: {
+          versionId: ""
+        }
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({
+        error: "INVALID_REQUEST",
+        message: "Invalid versionId in request body."
       });
     } finally {
       await server.close();

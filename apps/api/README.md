@@ -42,6 +42,14 @@ Fallback transports are intentionally unavailable:
 - `GET /rooms/:roomId/versions/:versionId`
 	- `200`: returns specific room version document
 	- `404`: version not found for room
+- `POST /rooms/:roomId/save`
+	- `200`: creates a new immutable version from current room doc and updates current pointer
+	- `404`: room/current snapshot not found
+	- `400`: invalid `roomId` or request body
+- `POST /rooms/:roomId/reapply`
+	- `200`: creates a new immutable latest version from requested historical version and updates current pointer
+	- `404`: source version not found for room
+	- `400`: invalid `roomId` or invalid `versionId` in request body
 
 ## Database migrations
 

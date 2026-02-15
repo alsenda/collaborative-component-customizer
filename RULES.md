@@ -138,6 +138,8 @@ If you contribute to this project, follow these rules strictly.
 - Each PR/commit should do one thing.
 - No unrelated refactors in feature commits.
 - Prefer adding over rewriting unless necessary.
+- Commit messages must be reviewer-facing and descriptive without internal planning labels.
+- Do not reference `STEP_*`, `HOTFIX_*`, or roadmap milestone shorthand in commit titles or commit bodies.
 
 ## 10. If you are an AI agent
 
@@ -145,6 +147,9 @@ If you contribute to this project, follow these rules strictly.
 - Follow the plan steps in `/plan/PLAN.md` and the referenced step files.
 - If a step requires a decision, list options with trade-offs and pick the simplest safe default.
 - Always implement acceptance criteria and add/update tests.
+- `/plan` is a local planning workspace and is gitignored by default.
+- You may read `/plan` for execution guidance, but do not stage/commit/push files from `/plan` unless the user explicitly requests it.
+- Never reference internal planning labels (`STEP_*`, `HOTFIX_*`, roadmap phase labels) in commit messages.
 
 ## 11. Step command protocol (for AI agents)
 

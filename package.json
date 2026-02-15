@@ -9,7 +9,9 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "dev": "npm run dev --workspaces --if-present",
+    "dev": "npm run dev:web",
+    "dev:web": "npm run dev --workspace @collaborative-component-customizer/web",
+    "dev:api": "npm run dev --workspace @collaborative-component-customizer/api",
     "lint": "npm run lint --workspaces --if-present",
     "format": "prettier --write .",
     "typecheck": "npm run typecheck --workspaces --if-present",

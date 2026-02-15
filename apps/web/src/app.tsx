@@ -5,6 +5,12 @@ import {
   type EngineDocument,
   type EnginePatchOperation
 } from "@collaborative-component-customizer/engine";
+import {
+  demoComponentTemplates,
+  demoWorkspaceInstances,
+  resolveRenderableWorkspaceInstances,
+  type RenderableWorkspaceInstance
+} from "./workspaceTemplates";
 
 interface MigrationProofResponse {
   migrationCount: number;
@@ -69,6 +75,32 @@ interface ReapplyVersionResponse {
 
 type AppRoute = "/workspace" | "/history";
 
+export interface SelectedWorkspaceNode {
+  componentId: string;
+  instanceId: string;
+  nodeId: string;
+}
+
+export function formatSelectedNodeProof(selectedNode: SelectedWorkspaceNode | null): string {
+  if (selectedNode === null) {
+    return "none";
+  }
+
+  return JSON.stringify(selectedNode);
+}
+
+export function createSelectedWorkspaceNode(
+  componentId: string,
+  instanceId: string,
+  nodeId: string
+): SelectedWorkspaceNode {
+  return {
+    componentId,
+    instanceId,
+    nodeId
+  };
+}
+
 export function resolveRoutePath(pathname: string): AppRoute {
   if (pathname === "/history") {
     return "/history";
@@ -130,6 +162,13 @@ export function App({ initialPath }: AppProps): JSX.Element {
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
   const sampleRoomId = "demo-room";
   const { route, navigate } = useAppRoute(initialPath);
+  const renderableWorkspaceInstances = useMemo(
+    () => resolveRenderableWorkspaceInstances(demoComponentTemplates, demoWorkspaceInstances),
+    []
+  );
+  const [selectedWorkspaceNode, setSelectedWorkspaceNode] = useState<SelectedWorkspaceNode | null>(
+    null
+  );
   const [migrationProof, setMigrationProof] = useState<
     | { status: "loading" }
     | { status: "success"; value: MigrationProofResponse }
@@ -466,12 +505,18 @@ export function App({ initialPath }: AppProps): JSX.Element {
       <main className="mx-auto max-w-5xl px-4 py-6" role="main">
         {route === "/workspace" ? (
           <section className="space-y-6">
-            <div className="rounded border p-4">
-              <h2 className="text-base font-semibold">Workspace route placeholder</h2>
-              <p className="mt-1 text-sm">
-                Editor surface scaffold for upcoming component rendering and editing steps.
-              </p>
-            </div>
+            <WorkspaceRenderer
+              instances={renderableWorkspaceInstances}
+              selectedNode={selectedWorkspaceNode}
+              onSelectNode={(nextSelection) => {
+                setSelectedWorkspaceNode(nextSelection);
+              }}
+            />
+
+            <article className="rounded border p-4">
+              <h2 className="text-base font-semibold">Node selection proof</h2>
+              <p className="mt-1 text-sm">Selected node: {formatSelectedNodeProof(selectedWorkspaceNode)}</p>
+            </article>
 
             <ProgressDebugDashboard
               migrationProof={migrationProof}
@@ -494,6 +539,64 @@ export function App({ initialPath }: AppProps): JSX.Element {
         ) : null}
       </main>
     </div>
+  );
+}
+
+interface WorkspaceRendererProps {
+  instances: RenderableWorkspaceInstance[];
+  selectedNode: SelectedWorkspaceNode | null;
+  onSelectNode: (nextSelection: SelectedWorkspaceNode) => void;
+}
+
+export function WorkspaceRenderer({
+  instances,
+  selectedNode,
+  onSelectNode
+}: WorkspaceRendererProps): JSX.Element {
+  return (
+    <article className="rounded border p-4">
+      <h2 className="text-base font-semibold">Workspace renderer</h2>
+      <p className="mt-1 text-sm">Templates render in deterministic order and each node is selectable.</p>
+
+      <div className="mt-4 space-y-4">
+        {instances.map((instance) => (
+          <section key={instance.instanceId} className="rounded border p-3">
+            <h3 className="font-medium">{instance.label}</h3>
+            <p className="text-sm">{instance.templateDisplayName}</p>
+
+            <div className="mt-3 space-y-2">
+              {instance.nodes.map((node) => {
+                const isSelected =
+                  selectedNode?.componentId === instance.componentId &&
+                  selectedNode.instanceId === instance.instanceId &&
+                  selectedNode.nodeId === node.nodeId;
+
+                return (
+                  <button
+                    key={node.nodeId}
+                    type="button"
+                    data-selection-key={`${instance.instanceId}:${node.nodeId}`}
+                    data-selected={isSelected ? "true" : "false"}
+                    className={`w-full rounded border p-2 text-left ${node.baseClassName} ${
+                      isSelected ? "border-2 font-semibold" : ""
+                    }`}
+                    onClick={() => {
+                      onSelectNode(
+                        createSelectedWorkspaceNode(instance.componentId, instance.instanceId, node.nodeId)
+                      );
+                    }}
+                  >
+                    <span className="text-xs">{node.label}</span>
+                    <span className="block">{node.text}</span>
+                    {isSelected ? <span className="text-xs">Selection overlay active</span> : null}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+    </article>
   );
 }
 

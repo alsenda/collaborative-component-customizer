@@ -29,7 +29,7 @@ If you contribute to this project, follow these rules strictly.
   - packages/*: `.ts`
 - Do not add `.js` or `.jsx` source files.
 - Config files may be `.js` only when required by tooling, but prefer `.ts` where supported.
-- All workspaces must pass `pnpm -r typecheck`.
+- All workspaces must pass `npm run typecheck --workspaces --if-present`.
 - TS strict mode MUST be enabled in all workspaces.
 - Do not use `any` unless there is a documented, local justification.
 

@@ -347,3 +347,69 @@ describe("room document and version routes", () => {
     }
   });
 });
+
+describe("realtime routes", () => {
+  test("exposes webtransport endpoint with explicit no-fallback response", async () => {
+    process.env.API_DB_PATH = await setupDatabase(true);
+
+    const server = buildServer();
+
+    try {
+      const response = await server.inject({
+        method: "GET",
+        url: "/realtime/webtransport"
+      });
+
+      expect(response.statusCode).toBe(426);
+      expect(response.json()).toEqual({
+        error: "WEBTRANSPORT_UPGRADE_REQUIRED",
+        message:
+          "This endpoint is reserved for WebTransport (HTTP/3) sessions. WebSocket and other fallbacks are intentionally unavailable in STEP_12."
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("demo flow returns latest typed patchDraft message from backend dispatcher", async () => {
+    process.env.API_DB_PATH = await setupDatabase(true);
+
+    const server = buildServer();
+
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/realtime/webtransport/demo-flow",
+        payload: {
+          roomId: fixtureRoomId
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        transport: "webtransport",
+        roomId: fixtureRoomId,
+        messagesSentToConnectionA: 1,
+        messagesSentToConnectionB: 2,
+        latestMessage: {
+          protocolVersion: 1,
+          type: "patchDraft",
+          roomId: fixtureRoomId,
+          draftId: "step-12-draft-1",
+          baseVersionId: "version-003",
+          authorClientId: "step-12-demo-client-a",
+          ops: [
+            {
+              op: "setAtomicClassName",
+              componentId: "component-hero",
+              className: "text-6xl"
+            }
+          ]
+        }
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+});

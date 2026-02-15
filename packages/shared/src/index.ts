@@ -97,6 +97,15 @@ export type PatchDraftMessage = ProtocolEnvelope & {
 	ops: PatchOp[];
 };
 
+export type PatchDraftBroadcastMessage = ProtocolEnvelope & {
+	type: "patchDraft";
+	roomId: RoomId;
+	draftId: DraftId;
+	baseVersionId: VersionId;
+	authorClientId: ClientId;
+	ops: PatchOp[];
+};
+
 export type SaveMessage = ProtocolEnvelope & {
 	type: "save";
 	roomId: RoomId;
@@ -185,6 +194,20 @@ export type PresenceMessage = ProtocolEnvelope & {
 	clientIds: ClientId[];
 };
 
+export type ServerErrorCode =
+	| "INVALID_MESSAGE"
+	| "UNSUPPORTED_PROTOCOL_VERSION"
+	| "ROOM_NOT_FOUND"
+	| "UNSUPPORTED_MESSAGE_TYPE";
+
+export type ErrorMessage = ProtocolEnvelope & {
+	type: "error";
+	code: ServerErrorCode;
+	message: string;
+	issues?: string[] | undefined;
+	supportedProtocolVersion: typeof PROTOCOL_VERSION;
+};
+
 export type ClientMessage =
 	| JoinMessage
 	| SubscribeMessage
@@ -198,13 +221,15 @@ export type ClientMessage =
 
 export type ServerMessage =
 	| DocMessage
+	| PatchDraftBroadcastMessage
 	| SavedMessage
 	| VersionsMessage
 	| VersionDocMessage
 	| LockGrantedMessage
 	| LockDeniedMessage
 	| LockReleasedMessage
-	| PresenceMessage;
+	| PresenceMessage
+	| ErrorMessage;
 
 const idSchema = z.string().min(1).max(128);
 const isoDateTimeSchema = z.string().datetime({ offset: true });
@@ -323,6 +348,14 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
 		pageDoc: pageDocSchema
 	}),
 	protocolEnvelopeSchema.extend({
+		type: z.literal("patchDraft"),
+		roomId: idSchema,
+		draftId: idSchema,
+		baseVersionId: idSchema,
+		authorClientId: idSchema,
+		ops: z.array(patchOpSchema).max(200)
+	}),
+	protocolEnvelopeSchema.extend({
 		type: z.literal("saved"),
 		roomId: idSchema,
 		versionId: idSchema,
@@ -369,6 +402,18 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
 		type: z.literal("presence"),
 		roomId: idSchema,
 		clientIds: z.array(idSchema)
+	}),
+	protocolEnvelopeSchema.extend({
+		type: z.literal("error"),
+		code: z.enum([
+			"INVALID_MESSAGE",
+			"UNSUPPORTED_PROTOCOL_VERSION",
+			"ROOM_NOT_FOUND",
+			"UNSUPPORTED_MESSAGE_TYPE"
+		]),
+		message: z.string(),
+		issues: z.array(z.string()).optional(),
+		supportedProtocolVersion: z.literal(PROTOCOL_VERSION)
 	})
 ]);
 

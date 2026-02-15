@@ -2,6 +2,21 @@
 
 Fastify API service with a minimal `/health` endpoint for smoke checks.
 
+## Realtime endpoint (STEP_12)
+
+- `GET /realtime/webtransport`
+	- reserved endpoint for WebTransport (HTTP/3) sessions
+	- returns `426` when reached over regular HTTP to make no-fallback policy explicit
+- `POST /realtime/webtransport/demo-flow`
+	- deterministic adapter-contract demo route for STEP_12 proof
+	- returns latest typed realtime payload from backend dispatcher flow
+
+Fallback transports are intentionally unavailable in STEP_12:
+
+- no WebSocket fallback
+- no SSE fallback
+- no polling fallback
+
 ## Room document and version endpoints
 
 - `GET /rooms/:roomId/current`

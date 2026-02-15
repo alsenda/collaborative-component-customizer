@@ -11,6 +11,8 @@ import {
   isValidRouteId,
   listRoomVersions
 } from "./db/roomReadRepository.js";
+import { RealtimeDispatcher } from "./realtime/dispatcher.js";
+import { createWebTransportAdapter } from "./realtime/webTransportAdapter.js";
 
 interface ApiErrorPayload {
   error: "NOT_FOUND" | "INVALID_REQUEST";
@@ -27,8 +29,127 @@ export function buildServer(): FastifyInstance {
 
   const defaultDbFilePath = path.join(process.cwd(), "data", "api.sqlite");
   const dbFilePath = process.env.API_DB_PATH ?? defaultDbFilePath;
+  const realtimeDispatcher = new RealtimeDispatcher({
+    getCurrentRoomDoc: (roomId) => {
+      const database = new Database(dbFilePath);
+      database.exec("PRAGMA foreign_keys = ON;");
+
+      try {
+        return getCurrentRoomDoc(database, roomId);
+      } finally {
+        database.close();
+      }
+    },
+    logEvent: (event) => {
+      server.log.info({
+        direction: event.direction,
+        messageType: event.messageType,
+        roomId: event.roomId,
+        connectionId: event.connectionId,
+        clientId: event.clientId
+      });
+    }
+  });
+  const webTransportAdapter = createWebTransportAdapter(realtimeDispatcher);
 
   server.get("/health", async () => ({ status: "ok" }));
+
+  server.get("/realtime/webtransport", async (_request, reply) => {
+    reply.header("Access-Control-Allow-Origin", "*");
+
+    return reply.status(426).send({
+      error: "WEBTRANSPORT_UPGRADE_REQUIRED",
+      message:
+        "This endpoint is reserved for WebTransport (HTTP/3) sessions. WebSocket and other fallbacks are intentionally unavailable in STEP_12."
+    });
+  });
+
+  const handleRealtimeDemoFlow = async (
+    request: {
+      body?: unknown;
+    },
+    reply: {
+      header: (name: string, value: string) => void;
+      status: (statusCode: number) => { send: (payload: unknown) => unknown };
+    }
+  ) => {
+    reply.header("Access-Control-Allow-Origin", "*");
+
+    const body = request.body as { roomId?: unknown } | null | undefined;
+    const roomId = isValidRouteId(body?.roomId) ? body.roomId : "demo-room";
+    const sentToA: string[] = [];
+    const sentToB: string[] = [];
+
+    const connectionA = webTransportAdapter.connect({
+      connectionId: "step-12-demo-a",
+      sendText: (payload) => {
+        sentToA.push(payload);
+      }
+    });
+    const connectionB = webTransportAdapter.connect({
+      connectionId: "step-12-demo-b",
+      sendText: (payload) => {
+        sentToB.push(payload);
+      }
+    });
+
+    connectionA.receiveText(
+      JSON.stringify({
+        protocolVersion: 1,
+        type: "join",
+        roomId,
+        clientId: "step-12-demo-client-a"
+      })
+    );
+    connectionB.receiveText(
+      JSON.stringify({
+        protocolVersion: 1,
+        type: "subscribe",
+        roomId
+      })
+    );
+    connectionA.receiveText(
+      JSON.stringify({
+        protocolVersion: 1,
+        type: "patchDraft",
+        roomId,
+        draftId: "step-12-draft-1",
+        baseVersionId: "version-003",
+        ops: [
+          {
+            op: "setAtomicClassName",
+            componentId: "component-hero",
+            className: "text-6xl"
+          }
+        ]
+      })
+    );
+
+    connectionA.close();
+    connectionB.close();
+
+    const latestPayloadText = sentToB.at(-1);
+    const latestPayload = latestPayloadText === undefined ? null : JSON.parse(latestPayloadText);
+
+    return reply.status(200).send({
+      transport: "webtransport",
+      roomId,
+      messagesSentToConnectionA: sentToA.length,
+      messagesSentToConnectionB: sentToB.length,
+      latestMessage: latestPayload
+    });
+  };
+
+  server.post("/realtime/webtransport/demo-flow", async (request, reply) =>
+    handleRealtimeDemoFlow(request, reply)
+  );
+
+  server.options("/realtime/webtransport/demo-flow", async (_request, reply) => {
+    reply.header("Access-Control-Allow-Origin", "*");
+    reply.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    reply.header("Access-Control-Allow-Headers", "Content-Type");
+    return reply.status(204).send();
+  });
 
   server.get("/migration-proof", async (_request, reply) => {
     reply.header("Access-Control-Allow-Origin", "*");

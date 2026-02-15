@@ -11,6 +11,9 @@ describe("App progress dashboard", () => {
     expect(html).toContain("Backend proof: loading...");
     expect(html).toContain("Room document API");
     expect(html).toContain("Current doc fetch: loading...");
+    expect(html).toContain("Realtime demo");
+    expect(html).toContain("Realtime state: connecting...");
+    expect(html).toContain("WebTransport capability:");
     expect(html).toContain("Engine patch demo");
     expect(html).toContain("Status: success");
   });

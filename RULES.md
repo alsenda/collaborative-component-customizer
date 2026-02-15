@@ -129,6 +129,9 @@ If you contribute to this project, follow these rules strictly.
 - Every non-trivial folder has a short README or header comment.
 - Protocol changes must update shared types and include a migration note.
 - Keep docs short, factual, and up to date.
+- Do not reference internal planning artifacts in committed files:
+  - no `STEP_*`, `HOTFIX_*`, or roadmap milestone labels
+  - no internal planning workflow references in app code, tests, READMEs, route paths, or file names
 
 ## 9. Commit and review rules
 

@@ -2,16 +2,30 @@
 
 Fastify API service with a minimal `/health` endpoint for smoke checks.
 
-## Realtime endpoint (STEP_12)
+## Realtime endpoints
 
 - `GET /realtime/webtransport`
 	- reserved endpoint for WebTransport (HTTP/3) sessions
 	- returns `426` when reached over regular HTTP to make no-fallback policy explicit
 - `POST /realtime/webtransport/demo-flow`
-	- deterministic adapter-contract demo route for STEP_12 proof
+	- deterministic adapter-contract demo route
 	- returns latest typed realtime payload from backend dispatcher flow
+- `POST /realtime/webtransport/lock-presence-demo`
+	- deterministic lock/presence demo route
+	- runs `join`, `lockAcquire`, competing `lockAcquire`, invalid target acquire, and holder release
+	- returns latest typed lock/presence payload and recent lock/presence event list
 
-Fallback transports are intentionally unavailable in STEP_12:
+### Lock + presence behavior
+
+- Soft locks are room-scoped and target-scoped (`atomic` or `page` target key).
+- First valid `lockAcquire` receives `lockGranted`.
+- Competing acquire for the same room+target receives `lockDenied` with `reason: "alreadyLocked"`.
+- Invalid room target for lock acquisition receives `lockDenied` with `reason: "invalidTarget"`.
+- `lockReleased` is holder-only; non-holder release attempts do not release locks.
+- On disconnect, all locks owned by the disconnected connection are released and typed `lockReleased` messages are emitted to the room.
+- Presence is emitted as typed `presence` snapshots on join/subscribe and disconnect with deterministic sorted `clientIds`.
+
+Fallback transports are intentionally unavailable:
 
 - no WebSocket fallback
 - no SSE fallback

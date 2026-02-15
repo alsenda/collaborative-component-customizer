@@ -30,7 +30,7 @@ interface CurrentRoomDocResponse {
   };
 }
 
-interface Step12DemoResponse {
+interface RealtimeTransportDemoResponse {
   transport: string;
   roomId: string;
   messagesSentToConnectionA: number;
@@ -41,6 +41,13 @@ interface Step12DemoResponse {
 interface RealtimeDemoEvent {
   receivedAtIso: string;
   payload: unknown;
+}
+
+interface LockPresenceDemoResponse {
+  roomId: string;
+  lockActionResultState: "success";
+  latestEvent: unknown;
+  events: unknown[];
 }
 
 /**
@@ -61,7 +68,12 @@ export function App(): JSX.Element {
   >({ status: "loading" });
   const [step12DemoState, setStep12DemoState] = useState<
     | { status: "loading" }
-    | { status: "success"; payload: Step12DemoResponse; events: RealtimeDemoEvent[] }
+    | { status: "success"; payload: RealtimeTransportDemoResponse; events: RealtimeDemoEvent[] }
+    | { status: "error"; message: string }
+  >({ status: "loading" });
+  const [step13DemoState, setStep13DemoState] = useState<
+    | { status: "loading" }
+    | { status: "success"; payload: LockPresenceDemoResponse }
     | { status: "error"; message: string }
   >({ status: "loading" });
 
@@ -135,6 +147,45 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     const controller = new AbortController();
+
+    void (async () => {
+      try {
+        const response = await fetch(`${apiBaseUrl}/realtime/webtransport/lock-presence-demo`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({ roomId: sampleRoomId }),
+          signal: controller.signal
+        });
+
+        if (!response.ok) {
+          setStep13DemoState({
+            status: "error",
+            message: `backend returned ${response.status}`
+          });
+          return;
+        }
+
+        const payload = (await response.json()) as LockPresenceDemoResponse;
+        setStep13DemoState({ status: "success", payload });
+      } catch {
+        if (!controller.signal.aborted) {
+          setStep13DemoState({
+            status: "error",
+            message: "lock and presence demo request failed"
+          });
+        }
+      }
+    })();
+
+    return () => {
+      controller.abort();
+    };
+  }, [apiBaseUrl, sampleRoomId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
     let timer: ReturnType<typeof setInterval> | undefined;
 
     const runDemoFetch = async () => {
@@ -156,7 +207,7 @@ export function App(): JSX.Element {
           return;
         }
 
-        const payload = (await response.json()) as Step12DemoResponse;
+        const payload = (await response.json()) as RealtimeTransportDemoResponse;
 
         setStep12DemoState((previousState) => {
           const previousEvents = previousState.status === "success" ? previousState.events : [];
@@ -287,7 +338,7 @@ export function App(): JSX.Element {
           WebTransport capability: {"WebTransport" in globalThis ? "available" : "unavailable"}
         </p>
         {!("WebTransport" in globalThis) ? (
-          <p>No fallback transport exists in STEP_12.</p>
+          <p>No fallback transport exists.</p>
         ) : null}
 
         {step12DemoState.status === "error" ? (
@@ -302,6 +353,26 @@ export function App(): JSX.Element {
             <pre>{JSON.stringify(step12DemoState.payload.latestMessage, null, 2)}</pre>
             <p>Recent realtime messages:</p>
             <pre>{JSON.stringify(step12DemoState.events, null, 2)}</pre>
+          </>
+        ) : null}
+      </section>
+
+      <section className="mt-4">
+        <h2>Lock + presence debug</h2>
+
+        {step13DemoState.status === "loading" ? <p>Lock flow state: loading...</p> : null}
+
+        {step13DemoState.status === "error" ? (
+          <p>Lock flow state: error ({step13DemoState.message})</p>
+        ) : null}
+
+        {step13DemoState.status === "success" ? (
+          <>
+            <p>Lock action result: {step13DemoState.payload.lockActionResultState}</p>
+            <p>Status: success</p>
+            <pre>{JSON.stringify(step13DemoState.payload.latestEvent, null, 2)}</pre>
+            <p>Recent lock/presence messages:</p>
+            <pre>{JSON.stringify(step13DemoState.payload.events, null, 2)}</pre>
           </>
         ) : null}
       </section>

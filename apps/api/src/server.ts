@@ -1,5 +1,11 @@
 import Fastify, { type FastifyInstance } from "fastify";
-import { parseClientMessage } from "@collaborative-component-customizer/shared";
+import {
+  parseClientMessage,
+  parseServerMessage,
+  PROTOCOL_VERSION,
+  type LockTarget,
+  type ServerMessage
+} from "@collaborative-component-customizer/shared";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -46,7 +52,8 @@ export function buildServer(): FastifyInstance {
         messageType: event.messageType,
         roomId: event.roomId,
         connectionId: event.connectionId,
-        clientId: event.clientId
+        clientId: event.clientId,
+        lockTargetKey: event.lockTargetKey
       });
     }
   });
@@ -60,7 +67,7 @@ export function buildServer(): FastifyInstance {
     return reply.status(426).send({
       error: "WEBTRANSPORT_UPGRADE_REQUIRED",
       message:
-        "This endpoint is reserved for WebTransport (HTTP/3) sessions. WebSocket and other fallbacks are intentionally unavailable in STEP_12."
+        "This endpoint is reserved for WebTransport (HTTP/3) sessions. WebSocket and other fallbacks are intentionally unavailable."
     });
   });
 
@@ -81,13 +88,13 @@ export function buildServer(): FastifyInstance {
     const sentToB: string[] = [];
 
     const connectionA = webTransportAdapter.connect({
-      connectionId: "step-12-demo-a",
+      connectionId: "transport-demo-a",
       sendText: (payload) => {
         sentToA.push(payload);
       }
     });
     const connectionB = webTransportAdapter.connect({
-      connectionId: "step-12-demo-b",
+      connectionId: "transport-demo-b",
       sendText: (payload) => {
         sentToB.push(payload);
       }
@@ -95,25 +102,25 @@ export function buildServer(): FastifyInstance {
 
     connectionA.receiveText(
       JSON.stringify({
-        protocolVersion: 1,
+        protocolVersion: PROTOCOL_VERSION,
         type: "join",
         roomId,
-        clientId: "step-12-demo-client-a"
+        clientId: "transport-demo-client-a"
       })
     );
     connectionB.receiveText(
       JSON.stringify({
-        protocolVersion: 1,
+        protocolVersion: PROTOCOL_VERSION,
         type: "subscribe",
         roomId
       })
     );
     connectionA.receiveText(
       JSON.stringify({
-        protocolVersion: 1,
+        protocolVersion: PROTOCOL_VERSION,
         type: "patchDraft",
         roomId,
-        draftId: "step-12-draft-1",
+        draftId: "transport-demo-draft-1",
         baseVersionId: "version-003",
         ops: [
           {
@@ -128,15 +135,31 @@ export function buildServer(): FastifyInstance {
     connectionA.close();
     connectionB.close();
 
-    const latestPayloadText = sentToB.at(-1);
-    const latestPayload = latestPayloadText === undefined ? null : JSON.parse(latestPayloadText);
+    const parsePayloads = (payloads: string[]): ServerMessage[] => {
+      const parsed: ServerMessage[] = [];
+
+      for (const payload of payloads) {
+        const candidate = parseServerMessage(JSON.parse(payload) as unknown);
+        if ("code" in candidate) {
+          continue;
+        }
+
+        parsed.push(candidate);
+      }
+
+      return parsed;
+    };
+
+    const parsedMessagesToA = parsePayloads(sentToA).filter((message) => message.type !== "presence");
+    const parsedMessagesToB = parsePayloads(sentToB).filter((message) => message.type !== "presence");
+    const latestMessage = parsedMessagesToB.at(-1) ?? null;
 
     return reply.status(200).send({
       transport: "webtransport",
       roomId,
-      messagesSentToConnectionA: sentToA.length,
-      messagesSentToConnectionB: sentToB.length,
-      latestMessage: latestPayload
+      messagesSentToConnectionA: parsedMessagesToA.length,
+      messagesSentToConnectionB: parsedMessagesToB.length,
+      latestMessage
     });
   };
 
@@ -144,7 +167,146 @@ export function buildServer(): FastifyInstance {
     handleRealtimeDemoFlow(request, reply)
   );
 
+  const handleStep13DemoFlow = async (
+    request: {
+      body?: unknown;
+    },
+    reply: {
+      header: (name: string, value: string) => void;
+      status: (statusCode: number) => { send: (payload: unknown) => unknown };
+    }
+  ) => {
+    reply.header("Access-Control-Allow-Origin", "*");
+
+    const body = request.body as { roomId?: unknown } | null | undefined;
+    const roomId = isValidRouteId(body?.roomId) ? body.roomId : "demo-room";
+
+    const sentToA: string[] = [];
+    const sentToB: string[] = [];
+    const atomicTarget: LockTarget = {
+      target: "atomic",
+      componentId: "component-hero"
+    };
+
+    const connectionA = webTransportAdapter.connect({
+      connectionId: "lock-presence-demo-a",
+      sendText: (payload) => {
+        sentToA.push(payload);
+      }
+    });
+    const connectionB = webTransportAdapter.connect({
+      connectionId: "lock-presence-demo-b",
+      sendText: (payload) => {
+        sentToB.push(payload);
+      }
+    });
+
+    connectionA.receiveText(
+      JSON.stringify({
+        protocolVersion: PROTOCOL_VERSION,
+        type: "join",
+        roomId,
+        clientId: "lock-demo-client-a"
+      })
+    );
+    connectionB.receiveText(
+      JSON.stringify({
+        protocolVersion: PROTOCOL_VERSION,
+        type: "join",
+        roomId,
+        clientId: "lock-demo-client-b"
+      })
+    );
+    connectionA.receiveText(
+      JSON.stringify({
+        protocolVersion: PROTOCOL_VERSION,
+        type: "lockAcquire",
+        roomId,
+        clientId: "lock-demo-client-a",
+        lockTarget: atomicTarget
+      })
+    );
+    connectionB.receiveText(
+      JSON.stringify({
+        protocolVersion: PROTOCOL_VERSION,
+        type: "lockAcquire",
+        roomId,
+        clientId: "lock-demo-client-b",
+        lockTarget: atomicTarget
+      })
+    );
+    connectionB.receiveText(
+      JSON.stringify({
+        protocolVersion: PROTOCOL_VERSION,
+        type: "lockAcquire",
+        roomId,
+        clientId: "lock-demo-client-b",
+        lockTarget: {
+          target: "atomic",
+          componentId: "missing-component"
+        }
+      })
+    );
+    connectionA.receiveText(
+      JSON.stringify({
+        protocolVersion: PROTOCOL_VERSION,
+        type: "lockReleased",
+        roomId,
+        clientId: "lock-demo-client-a",
+        lockTarget: atomicTarget
+      })
+    );
+
+    connectionA.close();
+    connectionB.close();
+
+    const parsePayloads = (payloads: string[]): ServerMessage[] => {
+      const parsed: ServerMessage[] = [];
+
+      for (const payload of payloads) {
+        const candidate = parseServerMessage(JSON.parse(payload) as unknown);
+        if ("code" in candidate) {
+          continue;
+        }
+
+        parsed.push(candidate);
+      }
+
+      return parsed;
+    };
+
+    const parsedFromA = parsePayloads(sentToA);
+    const parsedFromB = parsePayloads(sentToB);
+    const lockAndPresenceMessages = [...parsedFromA, ...parsedFromB].filter(
+      (message) =>
+        message.type === "lockGranted" ||
+        message.type === "lockDenied" ||
+        message.type === "lockReleased" ||
+        message.type === "presence"
+    );
+
+    const latestEvent = lockAndPresenceMessages.at(-1) ?? null;
+
+    return reply.status(200).send({
+      roomId,
+      lockActionResultState: "success",
+      latestEvent,
+      events: lockAndPresenceMessages.slice(-10)
+    });
+  };
+
+  server.post("/realtime/webtransport/lock-presence-demo", async (request, reply) =>
+    handleStep13DemoFlow(request, reply)
+  );
+
   server.options("/realtime/webtransport/demo-flow", async (_request, reply) => {
+    reply.header("Access-Control-Allow-Origin", "*");
+    reply.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    reply.header("Access-Control-Allow-Headers", "Content-Type");
+    return reply.status(204).send();
+  });
+
+  server.options("/realtime/webtransport/lock-presence-demo", async (_request, reply) => {
     reply.header("Access-Control-Allow-Origin", "*");
     reply.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     reply.header("Access-Control-Allow-Headers", "Content-Type");

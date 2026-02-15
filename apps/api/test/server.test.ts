@@ -364,7 +364,7 @@ describe("realtime routes", () => {
       expect(response.json()).toEqual({
         error: "WEBTRANSPORT_UPGRADE_REQUIRED",
         message:
-          "This endpoint is reserved for WebTransport (HTTP/3) sessions. WebSocket and other fallbacks are intentionally unavailable in STEP_12."
+          "This endpoint is reserved for WebTransport (HTTP/3) sessions. WebSocket and other fallbacks are intentionally unavailable."
       });
     } finally {
       await server.close();
@@ -395,9 +395,9 @@ describe("realtime routes", () => {
           protocolVersion: 1,
           type: "patchDraft",
           roomId: fixtureRoomId,
-          draftId: "step-12-draft-1",
+          draftId: "transport-demo-draft-1",
           baseVersionId: "version-003",
-          authorClientId: "step-12-demo-client-a",
+          authorClientId: "transport-demo-client-a",
           ops: [
             {
               op: "setAtomicClassName",

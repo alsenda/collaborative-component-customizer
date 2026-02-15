@@ -252,7 +252,6 @@ The source of truth for implemented behavior is always the code + tests.
 - STEP_12: Realtime server with WebTransport
 - STEP_13: Locks + presence
 - STEP_14: Versioning: save + reapply
-- STEP_15: Remove temporary demo seed bootstrap
 
 ### Phase 2: Frontend
 - STEP_20: UI shell + routing + Tailwind setup
@@ -279,8 +278,7 @@ The source of truth for implemented behavior is always the code + tests.
 - [x] STEP_12 Realtime server (WebTransport)
 - [x] STEP_13 Locks + presence
 - [x] STEP_14 Versioning: save + reapply
-- [ ] STEP_15 Remove temporary demo seed bootstrap
-- [ ] STEP_20 UI shell + Tailwind
+- [x] STEP_20 UI shell + Tailwind
 - [ ] STEP_21 Component templates + renderer + node selection
 - [ ] STEP_22 Atomic editor
 - [ ] STEP_23 Page editor

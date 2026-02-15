@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import {
   applyPatchSequence,
   type EngineDocument,
@@ -67,12 +67,69 @@ interface ReapplyVersionResponse {
   sourceVersionId: string;
 }
 
+type AppRoute = "/workspace" | "/history";
+
+export function resolveRoutePath(pathname: string): AppRoute {
+  if (pathname === "/history") {
+    return "/history";
+  }
+
+  return "/workspace";
+}
+
+function useAppRoute(initialPath?: string): {
+  route: AppRoute;
+  navigate: (nextRoute: AppRoute) => void;
+} {
+  const [route, setRoute] = useState<AppRoute>(() => {
+    if (initialPath !== undefined) {
+      return resolveRoutePath(initialPath);
+    }
+
+    if (typeof window === "undefined") {
+      return "/workspace";
+    }
+
+    return resolveRoutePath(window.location.pathname);
+  });
+
+  useEffect(() => {
+    if (initialPath !== undefined || typeof window === "undefined") {
+      return;
+    }
+
+    const onPopState = () => {
+      setRoute(resolveRoutePath(window.location.pathname));
+    };
+
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+    };
+  }, [initialPath]);
+
+  const navigate = useCallback((nextRoute: AppRoute) => {
+    setRoute(nextRoute);
+
+    if (typeof window !== "undefined" && window.location.pathname !== nextRoute) {
+      window.history.pushState({}, "", nextRoute);
+    }
+  }, []);
+
+  return { route, navigate };
+}
+
+interface AppProps {
+  initialPath?: string;
+}
+
 /**
- * Renders the initial placeholder UI for the web application.
+ * Renders the frontend shell with route placeholders and existing backend proof sections.
  */
-export function App(): JSX.Element {
+export function App({ initialPath }: AppProps): JSX.Element {
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
   const sampleRoomId = "demo-room";
+  const { route, navigate } = useAppRoute(initialPath);
   const [migrationProof, setMigrationProof] = useState<
     | { status: "loading" }
     | { status: "success"; value: MigrationProofResponse }
@@ -348,50 +405,154 @@ export function App(): JSX.Element {
     };
   }, [apiBaseUrl, sampleRoomId]);
 
-  const sampleDocument: EngineDocument = {
-    atomicDoc: {
-      componentId: "component-header",
-      className: "text-sm"
-    },
-    pageDoc: {
-      pageId: "page-home",
-      overrides: []
-    }
-  };
+  const sampleResult = useMemo(() => {
+    const sampleDocument: EngineDocument = {
+      atomicDoc: {
+        componentId: "component-header",
+        className: "text-sm"
+      },
+      pageDoc: {
+        pageId: "page-home",
+        overrides: []
+      }
+    };
 
-  const sampleOperations: EnginePatchOperation[] = [
-    {
-      op: "setAtomicClassName",
-      componentId: "component-header",
-      className: "text-lg font-semibold"
-    },
-    {
-      op: "setPageNodeClassName",
-      pageId: "page-home",
-      instanceId: "hero",
-      nodeId: "title",
-      className: "text-5xl"
-    }
-  ];
+    const sampleOperations: EnginePatchOperation[] = [
+      {
+        op: "setAtomicClassName",
+        componentId: "component-header",
+        className: "text-lg font-semibold"
+      },
+      {
+        op: "setPageNodeClassName",
+        pageId: "page-home",
+        instanceId: "hero",
+        nodeId: "title",
+        className: "text-5xl"
+      }
+    ];
 
-  const sampleResult = applyPatchSequence(sampleDocument, sampleOperations);
+    return applyPatchSequence(sampleDocument, sampleOperations);
+  }, []);
 
   return (
-    <main className="p-4">
-      <h1>Progress Dashboard</h1>
-      <p>Frontend status view for backend and engine integration progress.</p>
+    <div className="min-h-screen">
+      <header className="border-b">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
+          <h1 className="text-lg font-semibold">Customization Platform</h1>
+          <nav aria-label="Primary" className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                navigate("/workspace");
+              }}
+              className={`rounded border px-3 py-1 text-sm ${route === "/workspace" ? "font-semibold" : ""}`}
+            >
+              Workspace
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                navigate("/history");
+              }}
+              className={`rounded border px-3 py-1 text-sm ${route === "/history" ? "font-semibold" : ""}`}
+            >
+              History
+            </button>
+          </nav>
+        </div>
+      </header>
 
-      <section className="mt-4">
-        <h2>Engine patch demo</h2>
-        <p>Status: {sampleResult.ok ? "success" : "error"}</p>
-        <pre>{JSON.stringify(sampleResult, null, 2)}</pre>
-      </section>
+      <main className="mx-auto max-w-5xl px-4 py-6" role="main">
+        {route === "/workspace" ? (
+          <section className="space-y-6">
+            <div className="rounded border p-4">
+              <h2 className="text-base font-semibold">Workspace route placeholder</h2>
+              <p className="mt-1 text-sm">
+                Editor surface scaffold for upcoming component rendering and editing steps.
+              </p>
+            </div>
 
-      <section className="mt-4">
-        <h2>SQLite migration status</h2>
-        {migrationProof.status === "loading" ? (
-          <p>Backend proof: loading...</p>
+            <ProgressDebugDashboard
+              migrationProof={migrationProof}
+              currentRoomDoc={currentRoomDoc}
+              step12DemoState={step12DemoState}
+              step13DemoState={step13DemoState}
+              versioningDemoState={versioningDemoState}
+              sampleResult={sampleResult}
+            />
+          </section>
         ) : null}
+
+        {route === "/history" ? (
+          <section className="rounded border p-4">
+            <h2 className="text-base font-semibold">History route placeholder</h2>
+            <p className="mt-1 text-sm">
+              Version history surface scaffold for upcoming preview and reapply UX steps.
+            </p>
+          </section>
+        ) : null}
+      </main>
+    </div>
+  );
+}
+
+interface ProgressDebugDashboardProps {
+  migrationProof:
+    | { status: "loading" }
+    | { status: "success"; value: MigrationProofResponse }
+    | { status: "error"; message: string };
+  currentRoomDoc:
+    | { status: "loading" }
+    | { status: "success"; value: CurrentRoomDocResponse }
+    | { status: "error"; message: string };
+  step12DemoState:
+    | { status: "loading" }
+    | { status: "success"; payload: RealtimeTransportDemoResponse; events: RealtimeDemoEvent[] }
+    | { status: "error"; message: string };
+  step13DemoState:
+    | { status: "loading" }
+    | { status: "success"; payload: LockPresenceDemoResponse }
+    | { status: "error"; message: string };
+  versioningDemoState:
+    | { status: "loading" }
+    | {
+        status: "success";
+        payload: {
+          save: SaveVersionResponse;
+          reapply: ReapplyVersionResponse;
+        };
+      }
+    | { status: "error"; message: string };
+  sampleResult: ReturnType<typeof applyPatchSequence>;
+}
+
+function ProgressDebugDashboard({
+  migrationProof,
+  currentRoomDoc,
+  step12DemoState,
+  step13DemoState,
+  versioningDemoState,
+  sampleResult
+}: ProgressDebugDashboardProps): JSX.Element {
+  return (
+    <section className="space-y-4">
+      <h2 className="text-base font-semibold">Integration progress dashboard</h2>
+      <p className="text-sm">
+        Deterministic backend and engine proof sections remain visible on the workspace route.
+      </p>
+
+      <article className="rounded border p-4">
+        <h3 className="font-medium">Engine patch demo</h3>
+        <p>Status: {sampleResult.ok ? "success" : "error"}</p>
+        <pre className="mt-2 overflow-x-auto rounded border p-3 text-xs">
+          {JSON.stringify(sampleResult, null, 2)}
+        </pre>
+      </article>
+
+      <article className="rounded border p-4">
+        <h3 className="font-medium">SQLite migration status</h3>
+        {migrationProof.status === "loading" ? <p>Backend proof: loading...</p> : null}
 
         {migrationProof.status === "error" ? (
           <p>Backend proof: error ({migrationProof.message})</p>
@@ -405,14 +566,12 @@ export function App(): JSX.Element {
             <p>Applied versions: {migrationProof.value.appliedVersions.join(", ")}</p>
           </>
         ) : null}
-      </section>
+      </article>
 
-      <section className="mt-4">
-        <h2>Room document API</h2>
+      <article className="rounded border p-4">
+        <h3 className="font-medium">Room document API</h3>
 
-        {currentRoomDoc.status === "loading" ? (
-          <p>Current doc fetch: loading...</p>
-        ) : null}
+        {currentRoomDoc.status === "loading" ? <p>Current doc fetch: loading...</p> : null}
 
         {currentRoomDoc.status === "error" ? (
           <p>Current doc fetch: error ({currentRoomDoc.message})</p>
@@ -421,22 +580,22 @@ export function App(): JSX.Element {
         {currentRoomDoc.status === "success" ? (
           <>
             <p>Status: success</p>
-            <pre>{JSON.stringify(currentRoomDoc.value, null, 2)}</pre>
+            <pre className="mt-2 overflow-x-auto rounded border p-3 text-xs">
+              {JSON.stringify(currentRoomDoc.value, null, 2)}
+            </pre>
           </>
         ) : null}
-      </section>
+      </article>
 
-      <section className="mt-4">
-        <h2>Realtime demo</h2>
+      <article className="rounded border p-4">
+        <h3 className="font-medium">Realtime demo</h3>
 
         {step12DemoState.status === "loading" ? <p>Realtime state: connecting...</p> : null}
 
         <p>
           WebTransport capability: {"WebTransport" in globalThis ? "available" : "unavailable"}
         </p>
-        {!("WebTransport" in globalThis) ? (
-          <p>No fallback transport exists.</p>
-        ) : null}
+        {!("WebTransport" in globalThis) ? <p>No fallback transport exists.</p> : null}
 
         {step12DemoState.status === "error" ? (
           <p>Realtime state: error ({step12DemoState.message})</p>
@@ -447,15 +606,19 @@ export function App(): JSX.Element {
             <p>Realtime state: connected</p>
             <p>Transport: {step12DemoState.payload.transport}</p>
             <p>Status: success</p>
-            <pre>{JSON.stringify(step12DemoState.payload.latestMessage, null, 2)}</pre>
+            <pre className="mt-2 overflow-x-auto rounded border p-3 text-xs">
+              {JSON.stringify(step12DemoState.payload.latestMessage, null, 2)}
+            </pre>
             <p>Recent realtime messages:</p>
-            <pre>{JSON.stringify(step12DemoState.events, null, 2)}</pre>
+            <pre className="mt-2 overflow-x-auto rounded border p-3 text-xs">
+              {JSON.stringify(step12DemoState.events, null, 2)}
+            </pre>
           </>
         ) : null}
-      </section>
+      </article>
 
-      <section className="mt-4">
-        <h2>Lock + presence debug</h2>
+      <article className="rounded border p-4">
+        <h3 className="font-medium">Lock + presence debug</h3>
 
         {step13DemoState.status === "loading" ? <p>Lock flow state: loading...</p> : null}
 
@@ -467,15 +630,19 @@ export function App(): JSX.Element {
           <>
             <p>Lock action result: {step13DemoState.payload.lockActionResultState}</p>
             <p>Status: success</p>
-            <pre>{JSON.stringify(step13DemoState.payload.latestEvent, null, 2)}</pre>
+            <pre className="mt-2 overflow-x-auto rounded border p-3 text-xs">
+              {JSON.stringify(step13DemoState.payload.latestEvent, null, 2)}
+            </pre>
             <p>Recent lock/presence messages:</p>
-            <pre>{JSON.stringify(step13DemoState.payload.events, null, 2)}</pre>
+            <pre className="mt-2 overflow-x-auto rounded border p-3 text-xs">
+              {JSON.stringify(step13DemoState.payload.events, null, 2)}
+            </pre>
           </>
         ) : null}
-      </section>
+      </article>
 
-      <section className="mt-4">
-        <h2>Versioning save + reapply debug</h2>
+      <article className="rounded border p-4">
+        <h3 className="font-medium">Versioning save + reapply debug</h3>
 
         {versioningDemoState.status === "loading" ? <p>Versioning flow state: loading...</p> : null}
 
@@ -487,12 +654,16 @@ export function App(): JSX.Element {
           <>
             <p>Versioning flow state: success</p>
             <p>Save payload:</p>
-            <pre>{JSON.stringify(versioningDemoState.payload.save, null, 2)}</pre>
+            <pre className="mt-2 overflow-x-auto rounded border p-3 text-xs">
+              {JSON.stringify(versioningDemoState.payload.save, null, 2)}
+            </pre>
             <p>Reapply payload:</p>
-            <pre>{JSON.stringify(versioningDemoState.payload.reapply, null, 2)}</pre>
+            <pre className="mt-2 overflow-x-auto rounded border p-3 text-xs">
+              {JSON.stringify(versioningDemoState.payload.reapply, null, 2)}
+            </pre>
           </>
         ) : null}
-      </section>
-    </main>
+      </article>
+    </section>
   );
 }

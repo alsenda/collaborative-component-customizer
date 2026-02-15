@@ -12,10 +12,10 @@
     "exactOptionalPropertyTypes": true,
     "baseUrl": ".",
     "paths": {
-      "@demo/shared": [
+      "@collaborative-component-customizer/shared": [
         "packages/shared/src/index.ts"
       ],
-      "@demo/engine": [
+      "@collaborative-component-customizer/engine": [
         "packages/engine/src/index.ts"
       ]
     }

@@ -82,6 +82,7 @@ export interface SelectedWorkspaceNode {
 }
 
 export type AtomicOverridesByNodeKey = Record<string, string>;
+export type PageOverridesByNodeKey = Record<string, string>;
 
 export function formatSelectedNodeProof(selectedNode: SelectedWorkspaceNode | null): string {
   if (selectedNode === null) {
@@ -107,17 +108,42 @@ export function createAtomicOverrideKey(componentId: string, nodeId: string): st
   return `${componentId}:${nodeId}`;
 }
 
-export function resolveNodeClassName(baseClassName: string, atomicOverrideClassName?: string): string {
-  const override = atomicOverrideClassName?.trim() ?? "";
+export function createPageOverrideKey(pageId: string, instanceId: string, nodeId: string): string {
+  return `${pageId}:${instanceId}:${nodeId}`;
+}
 
-  if (override.length === 0) {
+export function resolveNodeClassName(
+  baseClassName: string,
+  atomicOverrideClassName?: string,
+  pageOverrideClassName?: string
+): string {
+  const atomicOverride = atomicOverrideClassName?.trim() ?? "";
+  const pageOverride = pageOverrideClassName?.trim() ?? "";
+
+  if (atomicOverride.length === 0 && pageOverride.length === 0) {
     return baseClassName;
   }
 
-  return `${baseClassName} ${override}`;
+  if (atomicOverride.length > 0 && pageOverride.length > 0) {
+    return `${baseClassName} ${atomicOverride} ${pageOverride}`;
+  }
+
+  if (pageOverride.length > 0) {
+    return `${baseClassName} ${pageOverride}`;
+  }
+
+  return `${baseClassName} ${atomicOverride}`;
 }
 
 export function formatAtomicOverridesProof(overrides: AtomicOverridesByNodeKey): string {
+  if (Object.keys(overrides).length === 0) {
+    return "none";
+  }
+
+  return JSON.stringify(overrides);
+}
+
+export function formatPageOverridesProof(overrides: PageOverridesByNodeKey): string {
   if (Object.keys(overrides).length === 0) {
     return "none";
   }
@@ -185,6 +211,7 @@ interface AppProps {
 export function App({ initialPath }: AppProps): JSX.Element {
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
   const sampleRoomId = "demo-room";
+  const workspacePageId = "page-home";
   const { route, navigate } = useAppRoute(initialPath);
   const renderableWorkspaceInstances = useMemo(
     () => resolveRenderableWorkspaceInstances(demoComponentTemplates, demoWorkspaceInstances),
@@ -194,6 +221,7 @@ export function App({ initialPath }: AppProps): JSX.Element {
     null
   );
   const [atomicOverridesByNodeKey, setAtomicOverridesByNodeKey] = useState<AtomicOverridesByNodeKey>({});
+  const [pageOverridesByNodeKey, setPageOverridesByNodeKey] = useState<PageOverridesByNodeKey>({});
   const [migrationProof, setMigrationProof] = useState<
     | { status: "loading" }
     | { status: "success"; value: MigrationProofResponse }
@@ -505,6 +533,16 @@ export function App({ initialPath }: AppProps): JSX.Element {
       : createAtomicOverrideKey(selectedWorkspaceNode.componentId, selectedWorkspaceNode.nodeId);
   const selectedAtomicOverrideClassName =
     selectedAtomicOverrideKey === null ? "" : (atomicOverridesByNodeKey[selectedAtomicOverrideKey] ?? "");
+  const selectedPageOverrideKey =
+    selectedWorkspaceNode === null
+      ? null
+      : createPageOverrideKey(
+        workspacePageId,
+        selectedWorkspaceNode.instanceId,
+        selectedWorkspaceNode.nodeId
+      );
+  const selectedPageOverrideClassName =
+    selectedPageOverrideKey === null ? "" : (pageOverridesByNodeKey[selectedPageOverrideKey] ?? "");
 
   return (
     <div className="min-h-screen">
@@ -540,9 +578,14 @@ export function App({ initialPath }: AppProps): JSX.Element {
             <WorkspaceRenderer
               instances={renderableWorkspaceInstances}
               selectedNode={selectedWorkspaceNode}
-              resolveNodeClassNameForRender={(componentId, nodeId, baseClassName) => {
-                const key = createAtomicOverrideKey(componentId, nodeId);
-                return resolveNodeClassName(baseClassName, atomicOverridesByNodeKey[key]);
+              resolveNodeClassNameForRender={(componentId, instanceId, nodeId, baseClassName) => {
+                const atomicKey = createAtomicOverrideKey(componentId, nodeId);
+                const pageKey = createPageOverrideKey(workspacePageId, instanceId, nodeId);
+                return resolveNodeClassName(
+                  baseClassName,
+                  atomicOverridesByNodeKey[atomicKey],
+                  pageOverridesByNodeKey[pageKey]
+                );
               }}
               onSelectNode={(nextSelection) => {
                 setSelectedWorkspaceNode(nextSelection);
@@ -577,6 +620,35 @@ export function App({ initialPath }: AppProps): JSX.Element {
               }}
             />
 
+            <PageEditorPanel
+              selectedNode={selectedWorkspaceNode}
+              pageId={workspacePageId}
+              selectedClassNameValue={selectedPageOverrideClassName}
+              onChangeSelectedClassName={(nextClassName) => {
+                if (selectedPageOverrideKey === null) {
+                  return;
+                }
+
+                setPageOverridesByNodeKey((previousState) => ({
+                  ...previousState,
+                  [selectedPageOverrideKey]: nextClassName
+                }));
+              }}
+              onClearSelectedClassName={() => {
+                if (selectedPageOverrideKey === null) {
+                  return;
+                }
+
+                setPageOverridesByNodeKey((previousState) => {
+                  const nextState: PageOverridesByNodeKey = {
+                    ...previousState
+                  };
+                  delete nextState[selectedPageOverrideKey];
+                  return nextState;
+                });
+              }}
+            />
+
             <article className="rounded border p-4">
               <h2 className="text-base font-semibold">Node selection proof</h2>
               <p className="mt-1 text-sm">Selected node: {formatSelectedNodeProof(selectedWorkspaceNode)}</p>
@@ -587,6 +659,11 @@ export function App({ initialPath }: AppProps): JSX.Element {
               <p className="mt-1 text-sm">
                 Atomic overrides: {formatAtomicOverridesProof(atomicOverridesByNodeKey)}
               </p>
+            </article>
+
+            <article className="rounded border p-4">
+              <h2 className="text-base font-semibold">Page overrides proof</h2>
+              <p className="mt-1 text-sm">Page overrides: {formatPageOverridesProof(pageOverridesByNodeKey)}</p>
             </article>
 
             <ProgressDebugDashboard
@@ -618,6 +695,7 @@ interface WorkspaceRendererProps {
   selectedNode: SelectedWorkspaceNode | null;
   resolveNodeClassNameForRender: (
     componentId: string,
+    instanceId: string,
     nodeId: string,
     baseClassName: string
   ) => string;
@@ -649,6 +727,7 @@ export function WorkspaceRenderer({
                   selectedNode.nodeId === node.nodeId;
                 const effectiveClassName = resolveNodeClassNameForRender(
                   instance.componentId,
+                  instance.instanceId,
                   node.nodeId,
                   node.baseClassName
                 );
@@ -677,6 +756,62 @@ export function WorkspaceRenderer({
             </div>
           </section>
         ))}
+      </div>
+    </article>
+  );
+}
+
+interface PageEditorPanelProps {
+  selectedNode: SelectedWorkspaceNode | null;
+  pageId: string;
+  selectedClassNameValue: string;
+  onChangeSelectedClassName: (nextClassName: string) => void;
+  onClearSelectedClassName: () => void;
+}
+
+function PageEditorPanel({
+  selectedNode,
+  pageId,
+  selectedClassNameValue,
+  onChangeSelectedClassName,
+  onClearSelectedClassName
+}: PageEditorPanelProps): JSX.Element {
+  const hasSelectedNode = selectedNode !== null;
+
+  return (
+    <article className="rounded border p-4">
+      <h2 className="text-base font-semibold">Page editor</h2>
+
+      {!hasSelectedNode ? (
+        <p className="mt-1 text-sm">Select a node to edit page className.</p>
+      ) : (
+        <p className="mt-1 text-sm">
+          Editing {pageId} / {selectedNode.instanceId} / {selectedNode.nodeId}
+        </p>
+      )}
+
+      <div className="mt-3 flex items-center gap-2">
+        <input
+          type="text"
+          value={selectedClassNameValue}
+          disabled={!hasSelectedNode}
+          placeholder="Page className override"
+          className="w-full rounded border px-3 py-2 text-sm"
+          onInput={(event) => {
+            const target = event.currentTarget as HTMLInputElement;
+            onChangeSelectedClassName(target.value);
+          }}
+        />
+        <button
+          type="button"
+          disabled={!hasSelectedNode}
+          className="rounded border px-3 py-2 text-sm"
+          onClick={() => {
+            onClearSelectedClassName();
+          }}
+        >
+          Clear
+        </button>
       </div>
     </article>
   );

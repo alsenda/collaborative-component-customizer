@@ -80,8 +80,8 @@ If you contribute to this project, follow these rules strictly.
 
 ## 4. Realtime rules
 
-- WebTransport is the preferred transport when available.
-- A fallback transport must exist (WebSocket) and use the exact same protocol messages.
+- WebTransport is the selected and required realtime transport for this project phase.
+- No alternate realtime transport may be implemented unless the roadmap and rules are explicitly updated.
 - All realtime messages are:
   - versioned (protocol version)
   - validated at runtime

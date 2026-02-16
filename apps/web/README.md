@@ -20,6 +20,16 @@ Preact + Vite frontend shell for the collaboration UI.
 - Atomic overrides are keyed by (`componentId`, `nodeId`) and apply to all matching component instances.
 - A visible "Atomic overrides proof" block shows the current override payload or `none`.
 
+## Page editor proof
+
+- The workspace route includes a minimal page editor for scoped node class overrides.
+- Page overrides are keyed by (`pageId`, `instanceId`, `nodeId`) and apply only to the targeted instance node.
+- A visible "Page overrides proof" block shows the current override payload or `none`.
+
+## Class resolution order
+
+- Rendered className precedence is deterministic: template base className, then atomic override, then page override.
+
 ## Styling
 
 - Tailwind CSS is configured through `tailwind.config.ts` and `postcss.config.cjs`.

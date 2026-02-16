@@ -34,14 +34,14 @@ async function createTempDbPath(): Promise<string> {
   return path.join(tempDirectory, "proof.sqlite");
 }
 
-async function setupDatabase(seedStep11Fixture: boolean): Promise<string> {
+async function setupDatabase(seedRoomFixtureData: boolean): Promise<string> {
   const dbFilePath = await createTempDbPath();
   await runMigrations({
     dbFilePath,
     now: () => new Date("2026-02-15T00:00:00.000Z")
   });
 
-  if (!seedStep11Fixture) {
+  if (!seedRoomFixtureData) {
     return dbFilePath;
   }
 

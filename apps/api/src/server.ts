@@ -180,7 +180,7 @@ export function buildServer(options: BuildServerOptions = {}): FastifyInstance {
     handleRealtimeDemoFlow(request, reply)
   );
 
-  const handleStep13DemoFlow = async (
+  const handleLockPresenceDemoFlow = async (
     request: {
       body?: unknown;
     },
@@ -309,7 +309,7 @@ export function buildServer(options: BuildServerOptions = {}): FastifyInstance {
   };
 
   server.post("/realtime/webtransport/lock-presence-demo", async (request, reply) =>
-    handleStep13DemoFlow(request, reply)
+    handleLockPresenceDemoFlow(request, reply)
   );
 
   server.options("/realtime/webtransport/demo-flow", async (_request, reply) => {

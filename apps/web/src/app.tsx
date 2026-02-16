@@ -81,6 +81,8 @@ export interface SelectedWorkspaceNode {
   nodeId: string;
 }
 
+export type AtomicOverridesByNodeKey = Record<string, string>;
+
 export function formatSelectedNodeProof(selectedNode: SelectedWorkspaceNode | null): string {
   if (selectedNode === null) {
     return "none";
@@ -99,6 +101,28 @@ export function createSelectedWorkspaceNode(
     instanceId,
     nodeId
   };
+}
+
+export function createAtomicOverrideKey(componentId: string, nodeId: string): string {
+  return `${componentId}:${nodeId}`;
+}
+
+export function resolveNodeClassName(baseClassName: string, atomicOverrideClassName?: string): string {
+  const override = atomicOverrideClassName?.trim() ?? "";
+
+  if (override.length === 0) {
+    return baseClassName;
+  }
+
+  return `${baseClassName} ${override}`;
+}
+
+export function formatAtomicOverridesProof(overrides: AtomicOverridesByNodeKey): string {
+  if (Object.keys(overrides).length === 0) {
+    return "none";
+  }
+
+  return JSON.stringify(overrides);
 }
 
 export function resolveRoutePath(pathname: string): AppRoute {
@@ -169,6 +193,7 @@ export function App({ initialPath }: AppProps): JSX.Element {
   const [selectedWorkspaceNode, setSelectedWorkspaceNode] = useState<SelectedWorkspaceNode | null>(
     null
   );
+  const [atomicOverridesByNodeKey, setAtomicOverridesByNodeKey] = useState<AtomicOverridesByNodeKey>({});
   const [migrationProof, setMigrationProof] = useState<
     | { status: "loading" }
     | { status: "success"; value: MigrationProofResponse }
@@ -179,12 +204,12 @@ export function App({ initialPath }: AppProps): JSX.Element {
     | { status: "success"; value: CurrentRoomDocResponse }
     | { status: "error"; message: string }
   >({ status: "loading" });
-  const [step12DemoState, setStep12DemoState] = useState<
+  const [realtimeTransportDemoState, setRealtimeTransportDemoState] = useState<
     | { status: "loading" }
     | { status: "success"; payload: RealtimeTransportDemoResponse; events: RealtimeDemoEvent[] }
     | { status: "error"; message: string }
   >({ status: "loading" });
-  const [step13DemoState, setStep13DemoState] = useState<
+  const [lockPresenceDemoState, setLockPresenceDemoState] = useState<
     | { status: "loading" }
     | { status: "success"; payload: LockPresenceDemoResponse }
     | { status: "error"; message: string }
@@ -192,12 +217,12 @@ export function App({ initialPath }: AppProps): JSX.Element {
   const [versioningDemoState, setVersioningDemoState] = useState<
     | { status: "loading" }
     | {
-        status: "success";
-        payload: {
-          save: SaveVersionResponse;
-          reapply: ReapplyVersionResponse;
-        };
-      }
+      status: "success";
+      payload: {
+        save: SaveVersionResponse;
+        reapply: ReapplyVersionResponse;
+      };
+    }
     | { status: "error"; message: string }
   >({ status: "loading" });
 
@@ -284,7 +309,7 @@ export function App({ initialPath }: AppProps): JSX.Element {
         });
 
         if (!response.ok) {
-          setStep13DemoState({
+          setLockPresenceDemoState({
             status: "error",
             message: `backend returned ${response.status}`
           });
@@ -292,10 +317,10 @@ export function App({ initialPath }: AppProps): JSX.Element {
         }
 
         const payload = (await response.json()) as LockPresenceDemoResponse;
-        setStep13DemoState({ status: "success", payload });
+        setLockPresenceDemoState({ status: "success", payload });
       } catch {
         if (!controller.signal.aborted) {
-          setStep13DemoState({
+          setLockPresenceDemoState({
             status: "error",
             message: "lock and presence demo request failed"
           });
@@ -393,7 +418,7 @@ export function App({ initialPath }: AppProps): JSX.Element {
         });
 
         if (!response.ok) {
-          setStep12DemoState({
+          setRealtimeTransportDemoState({
             status: "error",
             message: `backend returned ${response.status}`
           });
@@ -402,7 +427,7 @@ export function App({ initialPath }: AppProps): JSX.Element {
 
         const payload = (await response.json()) as RealtimeTransportDemoResponse;
 
-        setStep12DemoState((previousState) => {
+        setRealtimeTransportDemoState((previousState) => {
           const previousEvents = previousState.status === "success" ? previousState.events : [];
           const nextEvents = [
             ...previousEvents,
@@ -420,7 +445,7 @@ export function App({ initialPath }: AppProps): JSX.Element {
         });
       } catch {
         if (!controller.signal.aborted) {
-          setStep12DemoState({
+          setRealtimeTransportDemoState({
             status: "error",
             message: "realtime demo request failed"
           });
@@ -474,6 +499,13 @@ export function App({ initialPath }: AppProps): JSX.Element {
     return applyPatchSequence(sampleDocument, sampleOperations);
   }, []);
 
+  const selectedAtomicOverrideKey =
+    selectedWorkspaceNode === null
+      ? null
+      : createAtomicOverrideKey(selectedWorkspaceNode.componentId, selectedWorkspaceNode.nodeId);
+  const selectedAtomicOverrideClassName =
+    selectedAtomicOverrideKey === null ? "" : (atomicOverridesByNodeKey[selectedAtomicOverrideKey] ?? "");
+
   return (
     <div className="min-h-screen">
       <header className="border-b">
@@ -508,8 +540,40 @@ export function App({ initialPath }: AppProps): JSX.Element {
             <WorkspaceRenderer
               instances={renderableWorkspaceInstances}
               selectedNode={selectedWorkspaceNode}
+              resolveNodeClassNameForRender={(componentId, nodeId, baseClassName) => {
+                const key = createAtomicOverrideKey(componentId, nodeId);
+                return resolveNodeClassName(baseClassName, atomicOverridesByNodeKey[key]);
+              }}
               onSelectNode={(nextSelection) => {
                 setSelectedWorkspaceNode(nextSelection);
+              }}
+            />
+
+            <AtomicEditorPanel
+              selectedNode={selectedWorkspaceNode}
+              selectedClassNameValue={selectedAtomicOverrideClassName}
+              onChangeSelectedClassName={(nextClassName) => {
+                if (selectedAtomicOverrideKey === null) {
+                  return;
+                }
+
+                setAtomicOverridesByNodeKey((previousState) => ({
+                  ...previousState,
+                  [selectedAtomicOverrideKey]: nextClassName
+                }));
+              }}
+              onClearSelectedClassName={() => {
+                if (selectedAtomicOverrideKey === null) {
+                  return;
+                }
+
+                setAtomicOverridesByNodeKey((previousState) => {
+                  const nextState: AtomicOverridesByNodeKey = {
+                    ...previousState
+                  };
+                  delete nextState[selectedAtomicOverrideKey];
+                  return nextState;
+                });
               }}
             />
 
@@ -518,11 +582,18 @@ export function App({ initialPath }: AppProps): JSX.Element {
               <p className="mt-1 text-sm">Selected node: {formatSelectedNodeProof(selectedWorkspaceNode)}</p>
             </article>
 
+            <article className="rounded border p-4">
+              <h2 className="text-base font-semibold">Atomic overrides proof</h2>
+              <p className="mt-1 text-sm">
+                Atomic overrides: {formatAtomicOverridesProof(atomicOverridesByNodeKey)}
+              </p>
+            </article>
+
             <ProgressDebugDashboard
               migrationProof={migrationProof}
               currentRoomDoc={currentRoomDoc}
-              step12DemoState={step12DemoState}
-              step13DemoState={step13DemoState}
+              realtimeTransportDemoState={realtimeTransportDemoState}
+              lockPresenceDemoState={lockPresenceDemoState}
               versioningDemoState={versioningDemoState}
               sampleResult={sampleResult}
             />
@@ -545,12 +616,18 @@ export function App({ initialPath }: AppProps): JSX.Element {
 interface WorkspaceRendererProps {
   instances: RenderableWorkspaceInstance[];
   selectedNode: SelectedWorkspaceNode | null;
+  resolveNodeClassNameForRender: (
+    componentId: string,
+    nodeId: string,
+    baseClassName: string
+  ) => string;
   onSelectNode: (nextSelection: SelectedWorkspaceNode) => void;
 }
 
 export function WorkspaceRenderer({
   instances,
   selectedNode,
+  resolveNodeClassNameForRender,
   onSelectNode
 }: WorkspaceRendererProps): JSX.Element {
   return (
@@ -570,6 +647,11 @@ export function WorkspaceRenderer({
                   selectedNode?.componentId === instance.componentId &&
                   selectedNode.instanceId === instance.instanceId &&
                   selectedNode.nodeId === node.nodeId;
+                const effectiveClassName = resolveNodeClassNameForRender(
+                  instance.componentId,
+                  node.nodeId,
+                  node.baseClassName
+                );
 
                 return (
                   <button
@@ -577,9 +659,9 @@ export function WorkspaceRenderer({
                     type="button"
                     data-selection-key={`${instance.instanceId}:${node.nodeId}`}
                     data-selected={isSelected ? "true" : "false"}
-                    className={`w-full rounded border p-2 text-left ${node.baseClassName} ${
-                      isSelected ? "border-2 font-semibold" : ""
-                    }`}
+                    data-effective-class={effectiveClassName}
+                    className={`w-full rounded border p-2 text-left ${effectiveClassName} ${isSelected ? "border-2 font-semibold" : ""
+                      }`}
                     onClick={() => {
                       onSelectNode(
                         createSelectedWorkspaceNode(instance.componentId, instance.instanceId, node.nodeId)
@@ -600,41 +682,95 @@ export function WorkspaceRenderer({
   );
 }
 
+interface AtomicEditorPanelProps {
+  selectedNode: SelectedWorkspaceNode | null;
+  selectedClassNameValue: string;
+  onChangeSelectedClassName: (nextClassName: string) => void;
+  onClearSelectedClassName: () => void;
+}
+
+function AtomicEditorPanel({
+  selectedNode,
+  selectedClassNameValue,
+  onChangeSelectedClassName,
+  onClearSelectedClassName
+}: AtomicEditorPanelProps): JSX.Element {
+  const hasSelectedNode = selectedNode !== null;
+
+  return (
+    <article className="rounded border p-4">
+      <h2 className="text-base font-semibold">Atomic editor</h2>
+
+      {!hasSelectedNode ? (
+        <p className="mt-1 text-sm">Select a node to edit atomic className.</p>
+      ) : (
+        <p className="mt-1 text-sm">
+          Editing {selectedNode.componentId} / {selectedNode.nodeId}
+        </p>
+      )}
+
+      <div className="mt-3 flex items-center gap-2">
+        <input
+          type="text"
+          value={selectedClassNameValue}
+          disabled={!hasSelectedNode}
+          placeholder="Atomic className override"
+          className="w-full rounded border px-3 py-2 text-sm"
+          onInput={(event) => {
+            const target = event.currentTarget as HTMLInputElement;
+            onChangeSelectedClassName(target.value);
+          }}
+        />
+        <button
+          type="button"
+          disabled={!hasSelectedNode}
+          className="rounded border px-3 py-2 text-sm"
+          onClick={() => {
+            onClearSelectedClassName();
+          }}
+        >
+          Clear
+        </button>
+      </div>
+    </article>
+  );
+}
+
 interface ProgressDebugDashboardProps {
   migrationProof:
-    | { status: "loading" }
-    | { status: "success"; value: MigrationProofResponse }
-    | { status: "error"; message: string };
+  | { status: "loading" }
+  | { status: "success"; value: MigrationProofResponse }
+  | { status: "error"; message: string };
   currentRoomDoc:
-    | { status: "loading" }
-    | { status: "success"; value: CurrentRoomDocResponse }
-    | { status: "error"; message: string };
-  step12DemoState:
-    | { status: "loading" }
-    | { status: "success"; payload: RealtimeTransportDemoResponse; events: RealtimeDemoEvent[] }
-    | { status: "error"; message: string };
-  step13DemoState:
-    | { status: "loading" }
-    | { status: "success"; payload: LockPresenceDemoResponse }
-    | { status: "error"; message: string };
+  | { status: "loading" }
+  | { status: "success"; value: CurrentRoomDocResponse }
+  | { status: "error"; message: string };
+  realtimeTransportDemoState:
+  | { status: "loading" }
+  | { status: "success"; payload: RealtimeTransportDemoResponse; events: RealtimeDemoEvent[] }
+  | { status: "error"; message: string };
+  lockPresenceDemoState:
+  | { status: "loading" }
+  | { status: "success"; payload: LockPresenceDemoResponse }
+  | { status: "error"; message: string };
   versioningDemoState:
-    | { status: "loading" }
-    | {
-        status: "success";
-        payload: {
-          save: SaveVersionResponse;
-          reapply: ReapplyVersionResponse;
-        };
-      }
-    | { status: "error"; message: string };
+  | { status: "loading" }
+  | {
+    status: "success";
+    payload: {
+      save: SaveVersionResponse;
+      reapply: ReapplyVersionResponse;
+    };
+  }
+  | { status: "error"; message: string };
   sampleResult: ReturnType<typeof applyPatchSequence>;
 }
 
 function ProgressDebugDashboard({
   migrationProof,
   currentRoomDoc,
-  step12DemoState,
-  step13DemoState,
+  realtimeTransportDemoState,
+  lockPresenceDemoState,
   versioningDemoState,
   sampleResult
 }: ProgressDebugDashboardProps): JSX.Element {
@@ -693,28 +829,28 @@ function ProgressDebugDashboard({
       <article className="rounded border p-4">
         <h3 className="font-medium">Realtime demo</h3>
 
-        {step12DemoState.status === "loading" ? <p>Realtime state: connecting...</p> : null}
+        {realtimeTransportDemoState.status === "loading" ? <p>Realtime state: connecting...</p> : null}
 
         <p>
           WebTransport capability: {"WebTransport" in globalThis ? "available" : "unavailable"}
         </p>
         {!("WebTransport" in globalThis) ? <p>No fallback transport exists.</p> : null}
 
-        {step12DemoState.status === "error" ? (
-          <p>Realtime state: error ({step12DemoState.message})</p>
+        {realtimeTransportDemoState.status === "error" ? (
+          <p>Realtime state: error ({realtimeTransportDemoState.message})</p>
         ) : null}
 
-        {step12DemoState.status === "success" ? (
+        {realtimeTransportDemoState.status === "success" ? (
           <>
             <p>Realtime state: connected</p>
-            <p>Transport: {step12DemoState.payload.transport}</p>
+            <p>Transport: {realtimeTransportDemoState.payload.transport}</p>
             <p>Status: success</p>
             <pre className="mt-2 overflow-x-auto rounded border p-3 text-xs">
-              {JSON.stringify(step12DemoState.payload.latestMessage, null, 2)}
+              {JSON.stringify(realtimeTransportDemoState.payload.latestMessage, null, 2)}
             </pre>
             <p>Recent realtime messages:</p>
             <pre className="mt-2 overflow-x-auto rounded border p-3 text-xs">
-              {JSON.stringify(step12DemoState.events, null, 2)}
+              {JSON.stringify(realtimeTransportDemoState.events, null, 2)}
             </pre>
           </>
         ) : null}
@@ -723,22 +859,22 @@ function ProgressDebugDashboard({
       <article className="rounded border p-4">
         <h3 className="font-medium">Lock + presence debug</h3>
 
-        {step13DemoState.status === "loading" ? <p>Lock flow state: loading...</p> : null}
+        {lockPresenceDemoState.status === "loading" ? <p>Lock flow state: loading...</p> : null}
 
-        {step13DemoState.status === "error" ? (
-          <p>Lock flow state: error ({step13DemoState.message})</p>
+        {lockPresenceDemoState.status === "error" ? (
+          <p>Lock flow state: error ({lockPresenceDemoState.message})</p>
         ) : null}
 
-        {step13DemoState.status === "success" ? (
+        {lockPresenceDemoState.status === "success" ? (
           <>
-            <p>Lock action result: {step13DemoState.payload.lockActionResultState}</p>
+            <p>Lock action result: {lockPresenceDemoState.payload.lockActionResultState}</p>
             <p>Status: success</p>
             <pre className="mt-2 overflow-x-auto rounded border p-3 text-xs">
-              {JSON.stringify(step13DemoState.payload.latestEvent, null, 2)}
+              {JSON.stringify(lockPresenceDemoState.payload.latestEvent, null, 2)}
             </pre>
             <p>Recent lock/presence messages:</p>
             <pre className="mt-2 overflow-x-auto rounded border p-3 text-xs">
-              {JSON.stringify(step13DemoState.payload.events, null, 2)}
+              {JSON.stringify(lockPresenceDemoState.payload.events, null, 2)}
             </pre>
           </>
         ) : null}

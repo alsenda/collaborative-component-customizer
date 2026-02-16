@@ -85,6 +85,11 @@ export const demoWorkspaceInstances: WorkspaceComponentInstance[] = [
     label: "Homepage hero"
   },
   {
+    instanceId: "instance-hero-secondary",
+    componentId: "component-hero-card",
+    label: "Pricing hero"
+  },
+  {
     instanceId: "instance-marketing-top",
     componentId: "component-marketing-banner",
     label: "Homepage top banner"

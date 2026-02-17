@@ -26,6 +26,13 @@ Preact + Vite frontend shell for the collaboration UI.
 - Page overrides are keyed by (`pageId`, `instanceId`, `nodeId`) and apply only to the targeted instance node.
 - A visible "Page overrides proof" block shows the current override payload or `none`.
 
+## Worker analysis proof
+
+- Class normalization, lint checks, and diff summary analysis run through a typed Web Worker protocol.
+- Worker requests are debounced, correlated by request IDs, and stale responses are ignored by the workspace flow.
+- Worker failures/timeouts fall back deterministically to the same pure analysis logic on the main thread.
+- A visible "Worker analysis proof" block shows the latest analysis payload or `none`.
+
 ## Class resolution order
 
 - Rendered className precedence is deterministic: template base className, then atomic override, then page override.

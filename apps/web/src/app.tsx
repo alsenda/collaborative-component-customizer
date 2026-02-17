@@ -1,16 +1,18 @@
 import type { JSX } from "preact";
-import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import {
   applyPatchSequence,
   type EngineDocument,
   type EnginePatchOperation
 } from "@collaborative-component-customizer/engine";
+import { ClassAnalysisWorkerClient, type AnalysisChangeRequest } from "./classAnalysisWorkerClient";
 import {
   demoComponentTemplates,
   demoWorkspaceInstances,
   resolveRenderableWorkspaceInstances,
   type RenderableWorkspaceInstance
 } from "./workspaceTemplates";
+import type { ClassAnalysisSnapshot } from "./workerProtocol";
 
 interface MigrationProofResponse {
   migrationCount: number;
@@ -151,6 +153,14 @@ export function formatPageOverridesProof(overrides: PageOverridesByNodeKey): str
   return JSON.stringify(overrides);
 }
 
+export function formatWorkerAnalysisProof(snapshot: ClassAnalysisSnapshot | null): string {
+  if (snapshot === null) {
+    return "none";
+  }
+
+  return JSON.stringify(snapshot);
+}
+
 export function resolveRoutePath(pathname: string): AppRoute {
   if (pathname === "/history") {
     return "/history";
@@ -222,6 +232,14 @@ export function App({ initialPath }: AppProps): JSX.Element {
   );
   const [atomicOverridesByNodeKey, setAtomicOverridesByNodeKey] = useState<AtomicOverridesByNodeKey>({});
   const [pageOverridesByNodeKey, setPageOverridesByNodeKey] = useState<PageOverridesByNodeKey>({});
+  const [pendingAnalysisRequest, setPendingAnalysisRequest] = useState<AnalysisChangeRequest | null>(
+    null
+  );
+  const [workerAnalysisSnapshot, setWorkerAnalysisSnapshot] = useState<ClassAnalysisSnapshot | null>(
+    null
+  );
+  const workerClientRef = useRef<ClassAnalysisWorkerClient | null>(null);
+  const analysisSequenceRef = useRef(0);
   const [migrationProof, setMigrationProof] = useState<
     | { status: "loading" }
     | { status: "success"; value: MigrationProofResponse }
@@ -544,6 +562,41 @@ export function App({ initialPath }: AppProps): JSX.Element {
   const selectedPageOverrideClassName =
     selectedPageOverrideKey === null ? "" : (pageOverridesByNodeKey[selectedPageOverrideKey] ?? "");
 
+  useEffect(() => {
+    return () => {
+      workerClientRef.current?.dispose();
+      workerClientRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (pendingAnalysisRequest === null) {
+      return;
+    }
+
+    const nextSequence = analysisSequenceRef.current + 1;
+    analysisSequenceRef.current = nextSequence;
+
+    const timer = setTimeout(() => {
+      void (async () => {
+        if (workerClientRef.current === null) {
+          workerClientRef.current = new ClassAnalysisWorkerClient();
+        }
+
+        const snapshot = await workerClientRef.current.analyzeClassChange(pendingAnalysisRequest);
+        if (analysisSequenceRef.current !== nextSequence) {
+          return;
+        }
+
+        setWorkerAnalysisSnapshot(snapshot);
+      })();
+    }, 180);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [pendingAnalysisRequest]);
+
   return (
     <div className="min-h-screen">
       <header className="border-b">
@@ -604,6 +657,12 @@ export function App({ initialPath }: AppProps): JSX.Element {
                   ...previousState,
                   [selectedAtomicOverrideKey]: nextClassName
                 }));
+                setPendingAnalysisRequest({
+                  scope: "atomic",
+                  targetKey: selectedAtomicOverrideKey,
+                  previousClassName: selectedAtomicOverrideClassName,
+                  nextClassName
+                });
               }}
               onClearSelectedClassName={() => {
                 if (selectedAtomicOverrideKey === null) {
@@ -616,6 +675,12 @@ export function App({ initialPath }: AppProps): JSX.Element {
                   };
                   delete nextState[selectedAtomicOverrideKey];
                   return nextState;
+                });
+                setPendingAnalysisRequest({
+                  scope: "atomic",
+                  targetKey: selectedAtomicOverrideKey,
+                  previousClassName: selectedAtomicOverrideClassName,
+                  nextClassName: ""
                 });
               }}
             />
@@ -633,6 +698,12 @@ export function App({ initialPath }: AppProps): JSX.Element {
                   ...previousState,
                   [selectedPageOverrideKey]: nextClassName
                 }));
+                setPendingAnalysisRequest({
+                  scope: "page",
+                  targetKey: selectedPageOverrideKey,
+                  previousClassName: selectedPageOverrideClassName,
+                  nextClassName
+                });
               }}
               onClearSelectedClassName={() => {
                 if (selectedPageOverrideKey === null) {
@@ -645,6 +716,12 @@ export function App({ initialPath }: AppProps): JSX.Element {
                   };
                   delete nextState[selectedPageOverrideKey];
                   return nextState;
+                });
+                setPendingAnalysisRequest({
+                  scope: "page",
+                  targetKey: selectedPageOverrideKey,
+                  previousClassName: selectedPageOverrideClassName,
+                  nextClassName: ""
                 });
               }}
             />
@@ -664,6 +741,13 @@ export function App({ initialPath }: AppProps): JSX.Element {
             <article className="rounded border p-4">
               <h2 className="text-base font-semibold">Page overrides proof</h2>
               <p className="mt-1 text-sm">Page overrides: {formatPageOverridesProof(pageOverridesByNodeKey)}</p>
+            </article>
+
+            <article className="rounded border p-4">
+              <h2 className="text-base font-semibold">Worker analysis proof</h2>
+              <p className="mt-1 text-sm">
+                Worker analysis: {formatWorkerAnalysisProof(workerAnalysisSnapshot)}
+              </p>
             </article>
 
             <ProgressDebugDashboard

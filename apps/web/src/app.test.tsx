@@ -8,6 +8,7 @@ import {
   formatAtomicOverridesProof,
   formatPageOverridesProof,
   formatSelectedNodeProof,
+  formatWorkerAnalysisProof,
   resolveRoutePath,
   resolveNodeClassName,
   WorkspaceRenderer
@@ -34,6 +35,8 @@ describe("App shell", () => {
     expect(html).toContain("Select a node to edit page className.");
     expect(html).toContain("Page overrides proof");
     expect(html).toContain("Page overrides: none");
+    expect(html).toContain("Worker analysis proof");
+    expect(html).toContain("Worker analysis: none");
     expect(html).toContain("Homepage hero");
     expect(html).toContain("Pricing hero");
     expect(html).toContain("Homepage top banner");
@@ -90,7 +93,7 @@ describe("App shell", () => {
         resolveNodeClassNameForRender={(_componentId, _instanceId, _nodeId, baseClassName) =>
           baseClassName
         }
-        onSelectNode={() => {}}
+        onSelectNode={() => { }}
       />
     );
 
@@ -110,7 +113,7 @@ describe("App shell", () => {
         resolveNodeClassNameForRender={(_componentId, _instanceId, _nodeId, baseClassName) =>
           baseClassName
         }
-        onSelectNode={() => {}}
+        onSelectNode={() => { }}
       />
     );
 
@@ -159,6 +162,31 @@ describe("App shell", () => {
     );
   });
 
+  test("formats worker analysis proof deterministically", () => {
+    expect(formatWorkerAnalysisProof(null)).toBe("none");
+    expect(
+      formatWorkerAnalysisProof({
+        scope: "atomic",
+        targetKey: "component-hero-card:title",
+        source: "worker",
+        normalized: {
+          normalizedClassName: "font-bold text-4xl",
+          tokens: ["font-bold", "text-4xl"]
+        },
+        lint: {
+          issues: []
+        },
+        diff: {
+          added: ["font-bold"],
+          removed: [],
+          unchangedCount: 1
+        }
+      })
+    ).toBe(
+      '{"scope":"atomic","targetKey":"component-hero-card:title","source":"worker","normalized":{"normalizedClassName":"font-bold text-4xl","tokens":["font-bold","text-4xl"]},"lint":{"issues":[]},"diff":{"added":["font-bold"],"removed":[],"unchangedCount":1}}'
+    );
+  });
+
   test("applies the same atomic override to all matching component instances", () => {
     const instances = resolveRenderableWorkspaceInstances(demoComponentTemplates, demoWorkspaceInstances);
     const overrideKey = createAtomicOverrideKey("component-hero-card", "title");
@@ -174,7 +202,7 @@ describe("App shell", () => {
           const key = createAtomicOverrideKey(componentId, nodeId);
           return resolveNodeClassName(baseClassName, overrides[key]);
         }}
-        onSelectNode={() => {}}
+        onSelectNode={() => { }}
       />
     );
 
@@ -199,7 +227,7 @@ describe("App shell", () => {
           const key = createPageOverrideKey(pageId, instanceId, nodeId);
           return resolveNodeClassName(baseClassName, undefined, pageOverrides[key]);
         }}
-        onSelectNode={() => {}}
+        onSelectNode={() => { }}
       />
     );
 
@@ -234,7 +262,7 @@ describe("App shell", () => {
             pageOverrides[pageKey]
           );
         }}
-        onSelectNode={() => {}}
+        onSelectNode={() => { }}
       />
     );
 
